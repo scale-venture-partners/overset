@@ -7,23 +7,15 @@ on:
 
 jobs:
   test:
+    # Hermetic: the integration tests skip themselves without LibreOffice.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
-      - name: Install LibreOffice and poppler
-        # The render rules' integration tests need both; everything else is hermetic.
-        # Non-interactive, or a package prompt waits for input until the job times out.
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libreoffice-impress poppler-utils
-        timeout-minutes: 10
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -34,3 +26,24 @@ jobs:
         run: uv run ruff check src tests
       - name: Test
         run: uv run pytest -q --cov
+
+  render:
+    # The real pipeline -- LibreOffice, pdftotext, pdftoppm -- once. The .debs
+    # are cached: the Ubuntu mirror can take minutes for LibreOffice alone.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install LibreOffice and poppler (cached)
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: libreoffice-impress poppler-utils
+          version: 1
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Sync
+        run: uv sync
+      - name: Integration tests
+        run: uv run pytest -q tests/test_integration.py -rs
