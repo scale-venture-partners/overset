@@ -8,6 +8,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -16,7 +17,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install LibreOffice and poppler
         # The render rules' integration tests need both; everything else is hermetic.
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libreoffice-impress poppler-utils
+        # Non-interactive, or a package prompt waits for input until the job times out.
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-impress poppler-utils
+        timeout-minutes: 10
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
