@@ -107,8 +107,9 @@ def text_off_slide(ctx):
 
 
 @rule("OVS002", "text-overflows-frame", "Rendered text spills out of its own frame", "render", severity="error",
-      explanation="The words belong to a frame whose box ends before they do, in the layout PowerPoint shows "
-                  "(shrink-to-fit frozen at its stored scale). Frames set to grow with their text are exempt -- for those, the box is stale, not the layout wrong; OVS001 and OVS003 "
+      explanation="The words belong to a frame whose box ends before they do, in the layout PowerPoint "
+                  "shows (shrink-to-fit frozen at its stored scale). Frames set to grow with their text are "
+                  "exempt -- for those, the box is stale, not the layout wrong; OVS001 and OVS003 "
                   "still catch them when the growth runs off the slide or into something else.")
 def text_overflows_frame(ctx):
     out, tol = [], ctx.settings.tolerance_emu

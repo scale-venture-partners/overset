@@ -34,11 +34,25 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: Install LibreOffice and poppler (cached)
-        uses: awalsh128/cache-apt-pkgs-action@v1
+      # Cache the downloaded .debs, not the installed files: restoring files
+      # skips the packages' post-install scripts, and LibreOffice installed
+      # that way crashes on its first conversion. apt installs from the cached
+      # archives and runs every script; only the download is skipped.
+      - name: Cache LibreOffice packages
+        uses: actions/cache@v4
         with:
-          packages: libreoffice-impress poppler-utils
-          version: 1
+          path: ~/apt-archives
+          key: apt-libreoffice-${{ runner.os }}-v1
+      - name: Install LibreOffice and poppler
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        timeout-minutes: 15
+        run: |
+          mkdir -p ~/apt-archives/partial
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" \
+            libreoffice-impress poppler-utils
+          sudo chown -R "$USER" ~/apt-archives
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
