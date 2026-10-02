@@ -60,4 +60,4 @@ jobs:
       - name: Sync
         run: uv sync
       - name: Integration tests
-        run: uv run pytest -q tests/test_integration.py -rs
+        run: uv run pytest -q tests/test_integration.py tests/test_powerpoint_layout.py -rs
