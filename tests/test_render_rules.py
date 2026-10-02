@@ -164,3 +164,21 @@ def test_lines_of_one_frame_never_collide_with_each_other(builder, make_deck, fa
     deck = make_deck(builder)
     render = fake_render([[word("one", 1.1, 1.1, 1, 0.3, block=0), word("two", 1.1, 1.2, 1, 0.3, block=1)]])
     assert check("OVS003", deck, render) == []
+
+
+def test_a_word_that_overflowed_into_a_frame_sharing_it_is_still_its_own_frames(builder, make_deck, fake_render):
+    # "rules" ends the title, wraps past its frame and lands inside the body's
+    # box -- whose text also says "rules". Reading order, not geometry, says
+    # whose word it is, and that it collides with the body's first line.
+    builder.text("Case is invisible to phrase rules", x=1, y=1, w=5, h=0.4)
+    builder.text("Two rules removed rather than shipped.", x=1, y=1.45, w=5, h=0.4)
+    deck = make_deck(builder)
+    words = [word(t, 1 + i * 0.7, 1.05, 0.6, 0.3, block=0) for i, t in enumerate("Case is invisible to phrase".split())]
+    words += [word("rules", 1.0, 1.42, 0.6, 0.3, block=0, line=1),
+              word("Two", 1.0, 1.47, 0.4, 0.3, block=1), word("rules", 1.5, 1.47, 0.6, 0.3, block=1),
+              word("removed", 2.2, 1.47, 0.8, 0.3, block=1)]
+    render = fake_render([words])
+    (spill,) = check("OVS002", deck, render)
+    assert spill.message == "text spills out of 'TextBox 1'" and spill.snippet == "rules"
+    (hit,) = check("OVS003", deck, render)
+    assert hit.message == "'TextBox 1' and 'TextBox 2' are drawn over each other"

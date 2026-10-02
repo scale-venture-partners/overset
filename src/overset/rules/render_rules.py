@@ -67,10 +67,59 @@ def _distance(frame: Box, word) -> int:
     return dx + dy
 
 
-def _owner_name(word, shapes, tol) -> str:
-    """The frame a rendered word belongs to, or its layout block if no frame claims it."""
-    owners = _owners(word, shapes, tol)
-    return min(owners, key=lambda o: _distance(o.box, word)).name if owners else f"block {word.block}"
+def _token(text: str) -> str:
+    return _norm(text).strip(".,;:!?\"'()[]\u201c\u201d\u2018\u2019")
+
+
+LOOKAHEAD = 3  # tokens a frame's sequence may skip: hyphenation, ligatures, a dropped glyph
+
+
+def assign_owners(words, shapes, tol) -> list:
+    """The frame each rendered word belongs to, by reading sequence first.
+
+    Geometry alone cannot attribute a word that overflowed into another frame
+    and also appears in that frame's text -- "rules" ending a title that ran
+    into a body reading "Two rules removed..." sits inside the body's box. The
+    renderer writes each frame's text in one run, so a word belongs to the
+    frame whose text it continues: the frame the previous word came from, if
+    its next token matches, else a frame whose sequence it starts or resumes.
+    Geometry is the fallback. Returns a Shape, or None, per word.
+    """
+    seqs = {id(s): [_token(t) for t in s.text.split()] for s in shapes
+            if s.box is not None and s.kind in ("text", "table", "group") and s.text.strip()}
+    by_id = {id(s): s for s in shapes}
+    pos = dict.fromkeys(seqs, 0)
+    current, out = None, []
+
+    def advance(sid, token):
+        seq, start = seqs[sid], pos[sid]
+        for i in range(start, min(start + LOOKAHEAD + 1, len(seq))):
+            if seq[i] == token:
+                pos[sid] = i + 1
+                return True
+        return False
+
+    for w in words:
+        token = _token(w.text)
+        owner = None
+        if token and current is not None and advance(current, token):
+            owner = current
+        elif token:
+            candidates = [o for o in _owners(w, shapes, tol) if id(o) in seqs]
+            resuming = [o for o in candidates if pos[id(o)] and seqs[id(o)][pos[id(o)]:pos[id(o)] + 1] == [token]]
+            starting = [o for o in candidates if not pos[id(o)] and seqs[id(o)][:1] == [token]]
+            pick = resuming or starting or candidates
+            if pick:
+                o = min(pick, key=lambda o: _distance(o.box, w))
+                advance(id(o), token)
+                owner = id(o)
+        current = owner
+        out.append(by_id[owner] if owner is not None else None)
+    return out
+
+
+def _owner_name(shape, word) -> str:
+    return shape.name if shape is not None else f"block {word.block}"
 
 
 def _by_block(words):
@@ -116,12 +165,10 @@ def text_overflows_frame(ctx):
     for page in ctx.render.pages:
         shapes = ctx.deck.slides[page.number - 1].shapes if page.number <= len(ctx.deck.slides) else []
         spilled = defaultdict(list)
-        for word in page.words:
-            owners = _owners(word, shapes, tol)
-            if not owners or any(fits(o.box, word, tol) or o.auto_grow for o in owners):
+        for word, owner in zip(page.words, assign_owners(page.words, shapes, tol), strict=True):
+            if owner is None or owner.auto_grow or fits(owner.box, word, tol):
                 continue
-            nearest = min(owners, key=lambda o: _distance(o.box, word))
-            spilled[nearest.name].append(word)
+            spilled[owner.name].append(word)
         for name, words in spilled.items():
             out.append(finding(ctx, "OVS002", f"text spills out of '{name}'", page.number, _text(words)))
     return out
@@ -136,7 +183,7 @@ def text_collision(ctx):
     for page in ctx.render.pages:
         shapes = ctx.deck.slides[page.number - 1].shapes if page.number <= len(ctx.deck.slides) else []
         words = page.words
-        owners = [_owner_name(w, shapes, tol) for w in words]
+        owners = [_owner_name(o, w) for o, w in zip(assign_owners(words, shapes, tol), words, strict=True)]
         inks = [ink(w) for w in words]
         hits: dict[tuple[str, str], list] = {}
         for i, a in enumerate(words):
