@@ -85,6 +85,23 @@ Three kinds, by what a rule needs:
   a row look the same). Measured problems are explicitly kept out of its
   rubric.
 
+### Rendered as PowerPoint shows it
+
+The audience opens the deck in PowerPoint, so that is the layout overset measures. The two renderers
+disagree about one thing that matters a lot: **shrink text on overflow** (`<a:normAutofit>`).
+PowerPoint applies the scale *stored* in the file when it opens a deck, and recomputes it only when
+someone edits the text. A bare `<a:normAutofit/>` therefore shows at 100%. LibreOffice recomputes the
+shrink on every render, so text that overflows in PowerPoint fits in LibreOffice, and in any preview
+LibreOffice made.
+
+Before rendering, overset freezes every shrink-to-fit box at its stored `fontScale` and
+`lnSpcReduction` (100% and 0 when absent). LibreOffice then draws PowerPoint's layout: the same line
+breaks, and the same text running into the next box. `render-as = "libreoffice"` turns this off.
+
+*Seen in practice:* a generated deck rendered cleanly in LibreOffice previews, and the cover subtitle and closing questions overlapped when the deck was opened in
+PowerPoint. The generator wrote a bare `normAutofit` and sized its boxes by estimate, counting on
+a shrink that PowerPoint never applied.
+
 ### Measurement notes
 
 - `pdftotext` boxes run from a font's ascender to its descender, not its ink.
@@ -119,6 +136,7 @@ max-words = 90
 min-contrast = 3.0
 tolerance-pt = 2.0
 render = true
+render-as = "powerpoint"            # or "libreoffice": don't freeze shrink-to-fit
 vision = false
 vision-model = "anthropic:claude-sonnet-4-6"
 vision-threshold = 0.7

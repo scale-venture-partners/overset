@@ -142,3 +142,25 @@ def test_pdftotext_boxes_are_converted_to_slide_emu(builder, make_deck):
     assert eight.text == "Eight" and (eight.block, whole.block) == (0, 1)
     assert eight.box.y < 0, "off-page words keep their negative coordinates"
     assert whole.box.w == deck.width and whole.box.h == deck.height
+
+
+# -- collisions by ownership --------------------------------------------------
+
+def test_frames_overflowing_into_each_other_collide_even_when_the_renderer_merges_them(
+        builder, make_deck, fake_render):
+    # Two questions stacked in fixed boxes, both overflowing: pdftotext puts
+    # their interleaved lines in one block, so only the deck can tell them apart.
+    builder.text("when they conflict which wins", x=8, y=3, w=4, h=0.4)
+    builder.text("overset caught clipped titles", x=8, y=3.4, w=4, h=0.4)
+    deck = make_deck(builder)
+    a = word("conflict", 8.1, 3.55, 1, 0.26, block=6, line=0)
+    b = word("overset", 8.1, 3.70, 1, 0.26, block=6, line=1)
+    (f,) = check("OVS003", deck, fake_render([[a, b]]))
+    assert "'TextBox 1' and 'TextBox 2' are drawn over each other" == f.message
+
+
+def test_lines_of_one_frame_never_collide_with_each_other(builder, make_deck, fake_render):
+    builder.text("one two", x=1, y=1, w=6, h=1)
+    deck = make_deck(builder)
+    render = fake_render([[word("one", 1.1, 1.1, 1, 0.3, block=0), word("two", 1.1, 1.2, 1, 0.3, block=1)]])
+    assert check("OVS003", deck, render) == []

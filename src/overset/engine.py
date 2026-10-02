@@ -43,7 +43,8 @@ def lint(path: str | Path, settings: Settings, workdir: Path | None = None, visi
     if needs_render:
         try:
             wants_sheet = any(REGISTRY[c].kind == "vision" for c in codes)
-            ctx.render = render_mod.render(deck, workdir, settings.font_dirs, contact_sheet=wants_sheet)
+            ctx.render = render_mod.render(deck, workdir, settings.font_dirs, contact_sheet=wants_sheet,
+                                           as_powerpoint=settings.render_as == "powerpoint")
             result.rendered = True
             result.notes += ctx.render.notes
         except render_mod.RenderError as e:

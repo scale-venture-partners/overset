@@ -15,10 +15,12 @@ Needs LibreOffice (`soffice`) and poppler (`pdftotext`, `pdftoppm`) on PATH.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -126,11 +128,61 @@ def parse_words(xhtml: str, deck: Deck) -> dict[int, tuple[float, float, list[Wo
     return pages
 
 
+_NORM_AUTOFIT = re.compile(r"<a:normAutofit\b([^>]*?)/>|<a:normAutofit\b([^>]*)>.*?</a:normAutofit>", re.S)
+_TX_BODY = re.compile(r"<p:txBody>.*?</p:txBody>", re.S)
+
+
+def _attr(attrs: str, name: str) -> int | None:
+    m = re.search(rf'\b{name}="(\d+)"', attrs or "")
+    return int(m.group(1)) if m else None
+
+
+def _freeze_body(body: str) -> str:
+    """One text body, with shrink-on-overflow replaced by what PowerPoint shows.
+
+    PowerPoint stores the result of shrinking -- `fontScale`, `lnSpcReduction`
+    -- and applies those stored values when it opens a file; it recomputes them
+    only when someone edits the text. A bare `<a:normAutofit/>` therefore means
+    100% in PowerPoint. LibreOffice instead recomputes the shrink every time it
+    renders, so text that overflows in PowerPoint fits in LibreOffice. Freezing
+    the stored values gives LibreOffice PowerPoint's layout to draw.
+    """
+    m = _NORM_AUTOFIT.search(body)
+    if m is None:
+        return body
+    attrs = m.group(1) if m.group(1) is not None else m.group(2)
+    scale = (_attr(attrs, "fontScale") or 100_000) / 100_000
+    reduction = (_attr(attrs, "lnSpcReduction") or 0) / 100_000
+    body = body[:m.start()] + "<a:noAutofit/>" + body[m.end():]
+    if scale != 1:
+        body = re.sub(r'(<a:(?:rPr|endParaRPr|defRPr)\b[^>]*?\bsz=")(\d+)(")',
+                      lambda r: f"{r.group(1)}{max(100, round(int(r.group(2)) * scale))}{r.group(3)}", body)
+    if reduction:
+        body = re.sub(r'(<a:lnSpc><a:spcPct val=")(\d+)(")',
+                      lambda r: f"{r.group(1)}{round(int(r.group(2)) * (1 - reduction))}{r.group(3)}", body)
+    return body
+
+
+def as_powerpoint_shows_it(pptx: Path, out: Path) -> Path:
+    """A copy of the deck whose text sits where PowerPoint would put it."""
+    with zipfile.ZipFile(pptx) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for item in src.infolist():
+            data = src.read(item.filename)
+            if re.match(r"ppt/(slides|slideLayouts|slideMasters)/[^/]+\.xml$", item.filename):
+                text = data.decode("utf-8")
+                data = _TX_BODY.sub(lambda b: _freeze_body(b.group(0)), text).encode("utf-8")
+            dst.writestr(item, data)
+    return out
+
+
 def render(deck: Deck, workdir: Path | None = None, font_dirs=(), dpi: int = DEFAULT_DPI,
-           contact_sheet: bool = False) -> Render:
+           contact_sheet: bool = False, as_powerpoint: bool = True) -> Render:
     workdir = Path(workdir or tempfile.mkdtemp(prefix="overset-"))
     workdir.mkdir(parents=True, exist_ok=True)
-    pdf = to_pdf(deck.path.resolve(), workdir, font_dirs)
+    source = deck.path.resolve()
+    if as_powerpoint:
+        source = as_powerpoint_shows_it(source, workdir / source.name)
+    pdf = to_pdf(source, workdir, font_dirs)
 
     xhtml = _run(["pdftotext", "-bbox-layout", str(pdf), "-"]).stdout
     words = parse_words(xhtml, deck)

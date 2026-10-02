@@ -29,6 +29,7 @@ class Settings:
     extend_select: tuple[str, ...] = ()
     extend_ignore: tuple[str, ...] = ()
     render: bool = True
+    render_as: str = "powerpoint"  # "powerpoint": shrink-to-fit frozen at its stored scale; "libreoffice": as-is
     vision: bool = False
     min_font_pt: float = 10.0
     max_words: int = 90

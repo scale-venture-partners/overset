@@ -49,9 +49,15 @@ def fits(frame: Box, word, tol: int) -> bool:
 
 
 def ink(word) -> Box:
-    """A word's box trimmed toward its ink: off the ascender's empty top, and
-    the descender's bottom. Two lines set tight are not a collision."""
-    top, bottom = round(0.28 * word.box.h), round(0.18 * word.box.h)
+    """A word's box trimmed to roughly its ink.
+
+    pdftotext's box runs from the font's ascent to its descent, about 1.33x the
+    point size. Glyphs start near the cap height, a fifth or more below the
+    top, and descenders reach nearly to the bottom -- so most of the trim comes
+    off the top. Two lines set tight are not a collision; a line drawn into
+    another one is.
+    """
+    top, bottom = round(0.28 * word.box.h), round(0.05 * word.box.h)
     return Box(word.box.x, word.box.y + top, word.box.w, max(word.box.h - top - bottom, 1))
 
 
@@ -59,6 +65,12 @@ def _distance(frame: Box, word) -> int:
     dx = max(frame.x - word.box.x, 0, word.box.right - frame.right)
     dy = max(frame.y - word.box.y, 0, word.box.bottom - frame.bottom)
     return dx + dy
+
+
+def _owner_name(word, shapes, tol) -> str:
+    """The frame a rendered word belongs to, or its layout block if no frame claims it."""
+    owners = _owners(word, shapes, tol)
+    return min(owners, key=lambda o: _distance(o.box, word)).name if owners else f"block {word.block}"
 
 
 def _by_block(words):
@@ -95,8 +107,8 @@ def text_off_slide(ctx):
 
 
 @rule("OVS002", "text-overflows-frame", "Rendered text spills out of its own frame", "render", severity="error",
-      explanation="The words belong to a frame whose box ends before they do. Frames set to grow with their "
-                  "text are exempt -- for those, the box is stale, not the layout wrong; OVS001 and OVS003 "
+      explanation="The words belong to a frame whose box ends before they do, in the layout PowerPoint shows "
+                  "(shrink-to-fit frozen at its stored scale). Frames set to grow with their text are exempt -- for those, the box is stale, not the layout wrong; OVS001 and OVS003 "
                   "still catch them when the growth runs off the slide or into something else.")
 def text_overflows_frame(ctx):
     out, tol = [], ctx.settings.tolerance_emu
@@ -115,25 +127,28 @@ def text_overflows_frame(ctx):
 
 
 @rule("OVS003", "text-collision", "Text from two frames is drawn on top of each other", "render",
-      explanation="Two words from different layout blocks overlap by more than a fifth of the smaller one, "
-                  "comparing approximate ink rather than font-metric boxes.")
+      explanation="Words owned by different text frames whose ink overlaps. Ownership comes from the deck, "
+                  "not the renderer's grouping: when two frames overflow into each other, pdftotext merges "
+                  "their interleaved lines into one block, which is exactly the case to catch.")
 def text_collision(ctx):
-    out = []
+    out, tol = [], ctx.settings.tolerance_emu
     for page in ctx.render.pages:
+        shapes = ctx.deck.slides[page.number - 1].shapes if page.number <= len(ctx.deck.slides) else []
         words = page.words
-        hits = set()
+        owners = [_owner_name(w, shapes, tol) for w in words]
+        inks = [ink(w) for w in words]
+        hits: dict[tuple[str, str], list] = {}
         for i, a in enumerate(words):
-            for b in words[i + 1:]:
-                if a.block == b.block:
+            for j in range(i + 1, len(words)):
+                if owners[i] == owners[j]:
                     continue
-                ia, ib = ink(a), ink(b)
-                overlap = ia.intersection(ib)
-                if overlap and overlap > 0.2 * min(ia.area, ib.area):
-                    hits.add((min(a.block, b.block), max(a.block, b.block)))
-        blocks = _by_block(words)
-        for x, y in sorted(hits):
-            snippet = f"{_text(blocks[x])} / {_text(blocks[y])}"
-            out.append(finding(ctx, "OVS003", "text from two frames overlaps", page.number, clip(snippet, 120)))
+                overlap = inks[i].intersection(inks[j])
+                if overlap and overlap > 0.05 * min(inks[i].area, inks[j].area):
+                    key = tuple(sorted((owners[i], owners[j])))
+                    hits.setdefault(key, [a, words[j]])
+        for (x, y), (a, b) in sorted(hits.items()):
+            out.append(finding(ctx, "OVS003", f"'{x}' and '{y}' are drawn over each other", page.number,
+                               clip(f"{a.text} / {b.text}", 120)))
     return out
 
 
