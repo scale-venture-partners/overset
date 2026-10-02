@@ -111,6 +111,17 @@ def test_faint_text_is_low_contrast_and_dark_text_is_not(builder, make_deck, fak
     assert check("OVS104", deck, dark) == []
 
 
+def test_dark_digits_on_a_dot_smaller_than_their_box_are_legible(builder, make_deck, fake_render):
+    # The template's numbered markers: ink digits on a green dot, paper round the dot.
+    def draw(n, image, dpi):
+        d = ImageDraw.Draw(image)
+        d.ellipse([1.05 * dpi, 1.0 * dpi, 1.45 * dpi, 1.4 * dpi], fill=(0, 199, 86))
+        d.rectangle([1.17 * dpi, 1.1 * dpi, 1.33 * dpi, 1.3 * dpi], fill=(32, 33, 27))
+    builder.text("01")
+    render = fake_render([[word("01", 1.0, 1.0, 0.5, 0.4)]], color=(247, 245, 242), dpi=80, draw=draw)
+    assert check("OVS104", make_deck(builder), render) == []
+
+
 def test_contrast_ratio_matches_wcag():
     assert round(contrast_ratio((0, 0, 0), (255, 255, 255)), 1) == 21.0
     assert contrast_ratio((119, 119, 119), (255, 255, 255)) > 4.4
@@ -182,3 +193,16 @@ def test_a_word_that_overflowed_into_a_frame_sharing_it_is_still_its_own_frames(
     assert spill.message == "text spills out of 'TextBox 1'" and spill.snippet == "rules"
     (hit,) = check("OVS003", deck, render)
     assert hit.message == "'TextBox 1' and 'TextBox 2' are drawn over each other"
+
+
+def test_a_row_of_cards_read_across_the_columns_keeps_each_word_in_its_card(builder, make_deck, fake_render):
+    # pdftotext emits card 1's first line, then card 2's: "Instructions on how" then "A".
+    # Card 1's text has an "a" a few words on, but card 2's "A" is not in card 1's column.
+    builder.text("Instructions on how to build a chart.", x=1, y=4, w=1.6, h=1.5)
+    builder.text("A typed Python API.", x=3, y=4, w=1.6, h=1.5)
+    deck = make_deck(builder)
+    words = [word("Instructions", 1.0, 4.1, 0.9, 0.25), word("on", 1.95, 4.1, 0.2, 0.25),
+             word("how", 2.2, 4.1, 0.3, 0.25), word("A", 3.0, 4.1, 0.1, 0.25, block=1),
+             word("typed", 3.15, 4.1, 0.4, 0.25, block=1), word("to", 1.0, 4.4, 0.2, 0.25),
+             word("build", 1.25, 4.4, 0.4, 0.25), word("a", 1.7, 4.4, 0.1, 0.25)]
+    assert check("OVS002", deck, fake_render([words])) == []

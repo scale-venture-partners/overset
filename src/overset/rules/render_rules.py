@@ -102,10 +102,15 @@ def assign_owners(words, shapes, tol) -> list:
     for w in words:
         token = _token(w.text)
         owner = None
-        if token and current is not None and advance(current, token):
+        # Only frames whose column the word sits in can own it. Continuing the previous
+        # word's frame must pass that test too: pdftotext reads a row of cards line by
+        # line across the columns, so the word after card 1's first line is card 2's,
+        # and card 1's text may well hold the same short word a few tokens on.
+        candidates = [o for o in _owners(w, shapes, tol) if id(o) in seqs] if token else []
+        column = {id(o) for o in candidates}
+        if token and current is not None and current in column and advance(current, token):
             owner = current
         elif token:
-            candidates = [o for o in _owners(w, shapes, tol) if id(o) in seqs]
             resuming = [o for o in candidates if pos[id(o)] and seqs[id(o)][pos[id(o)]:pos[id(o)] + 1] == [token]]
             starting = [o for o in candidates if not pos[id(o)] and seqs[id(o)][:1] == [token]]
             pick = resuming or starting or candidates
@@ -220,12 +225,27 @@ def _pixel_box(box: Box, dpi: int, image_size) -> tuple[int, int, int, int] | No
     return (x0, y0, x1, y1) if x1 - x0 >= 2 and y1 - y0 >= 2 else None
 
 
+# Colours covering this share of the sampled pixels are ink candidates.
+INK_SHARE = 0.02
+# Below this, a colour is a stray speck -- a corner of a rule, a dust pixel --
+# not text. Small, thin type spreads its ink over many antialiased shades that
+# each cover less than INK_SHARE, so the farthest colour above the speck floor
+# is a candidate too.
+SPECK_SHARE = 0.003
+
+
 def sample_contrast(image, boxes, dpi) -> float | None:
     """Contrast between a block's background and its ink, from the pixels.
 
-    The background is the commonest colour under the words; the ink is the
-    pixel farthest from it in luminance. Antialiasing only ever pulls the ink
-    toward the background, so this reads low, never high -- the safe side.
+    The background is the commonest colour under the words. The ink is the
+    candidate that contrasts with it most, where the candidates are every
+    colour covering at least INK_SHARE of the pixels plus the colour farthest
+    from the background in luminance (above the speck floor). Farthest alone
+    went wrong for text on a shape smaller than the word's box -- dark digits
+    on a green dot, with paper round the dot, measured green against paper
+    (2.1:1). Large shares alone went wrong for small thin type, whose ink is
+    spread over many faint shades. Antialiasing only pulls ink toward the
+    background, so this reads low, never high.
     """
     counts = defaultdict(int)
     for box in boxes:
@@ -237,10 +257,13 @@ def sample_contrast(image, boxes, dpi) -> float | None:
             counts[(raw[i] // 8 * 8, raw[i + 1] // 8 * 8, raw[i + 2] // 8 * 8)] += 1
     if not counts:
         return None
+    total = sum(counts.values())
     background = max(counts, key=counts.get)
     bl = _luminance(background)
-    ink = max(counts, key=lambda c: abs(_luminance(c) - bl))
-    return contrast_ratio(background, ink)
+    candidates = [c for c, n in counts.items() if c != background and n >= INK_SHARE * total]
+    visible = [c for c, n in counts.items() if n >= SPECK_SHARE * total] or list(counts)
+    candidates.append(max(visible, key=lambda c: abs(_luminance(c) - bl)))
+    return max(contrast_ratio(background, c) for c in candidates)
 
 
 @rule("OVS104", "low-contrast", "Text too close in tone to what is behind it", "render",

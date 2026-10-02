@@ -21,6 +21,16 @@ def _family_allowed(font: str, allowed: set[str]) -> bool:
     return any(name == a or name.startswith((a + " ", a + "-")) for a in allowed)
 
 
+@rule("OVS000", "invalid-package", "The file is not a well-formed PowerPoint package", "structure",
+      severity="error",
+      explanation="A part with no content type, a relationship to a part that isn't there, or XML that doesn't "
+                  "parse. PowerPoint offers to repair such a deck when it opens; python-pptx refuses to load it. "
+                  "Checked before anything else (overset.package), so the deck's other rules don't run when it "
+                  "can't be loaded.")
+def invalid_package(ctx):
+    return []  # computed by the engine before the deck loads; see engine._package_findings
+
+
 @rule("OVS004", "frame-off-slide", "A text frame extends past the slide edge", "structure",
       explanation="Measured from the file, not the render, so it holds even where a renderer clips. "
                   "Pictures are exempt: a full-bleed image is meant to reach the edge.")

@@ -60,6 +60,7 @@ overset --explain OVS002
 
 | Code | Kind | Rule |
 |---|---|---|
+| OVS000 | structure | The file isn't a well-formed package: a part with no content type, a relationship to a missing part, XML that doesn't parse (what PowerPoint offers to "repair") |
 | OVS001 | render | Rendered text runs past the slide edge |
 | OVS002 | render | Rendered text spills out of its own frame |
 | OVS003 | render | Text from two frames is drawn on top of each other |
@@ -115,6 +116,18 @@ a shrink that PowerPoint never applied.
   not reported.
 - overset renders the deck itself rather than trusting someone else's preview
   images, which can be stale.
+- Contrast is sampled from the pixels under each block of words: the
+  background is the commonest colour, and the ink is whichever candidate
+  contrasts with it most -- every colour with a real share of the pixels, plus
+  the farthest one in tone. That handles digits on a dot smaller than their box
+  (paper around the dot is not the ink) and small thin type (whose ink is spread
+  over many faint shades).
+- Words are attributed to frames by reading order *and* column: pdftotext reads
+  a row of cards line by line across the columns, so a word continues a frame's
+  sequence only if it sits in that frame's column.
+- The package is checked before the deck is read (OVS000). A deck python-pptx
+  can't load is reported as that finding, not as overset failing; a file that
+  isn't a zip at all (a `~$deck.pptx` lock file) is a usage error.
 - Decks that embed their fonts render in those
   fonts. For others, `font-dirs` registers font folders with fontconfig.
 
