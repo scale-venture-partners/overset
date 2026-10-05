@@ -37,8 +37,8 @@ compares those boxes with the frames in the file.
 ## Install
 
 ```console
-uv tool install git+https://github.com/scale-venture-partners/overset
-uv tool install "overset[vision] @ git+https://github.com/scale-venture-partners/overset"   # + vision rules
+uv tool install overset
+uv tool install "overset[vision]"   # + vision rules
 ```
 
 The render rules need **LibreOffice** and **poppler** on PATH
