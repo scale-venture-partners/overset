@@ -26,8 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="overset",
         description="A deck linter. Measures what each slide actually renders -- text off the slide, out of "
-                    "its frame, colliding, too small, too faint, off-brand -- and reports it with "
-                    "ruff-style rule codes.",
+        "its frame, colliding, too small, too faint, off-brand -- and reports it with "
+        "ruff-style rule codes.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             examples:

@@ -12,17 +12,18 @@ from overset.settings import Settings
 
 load_rules()
 
-REVIEW = {"issues": [
-    {"code": "OVS401", "slide": 3, "message": "Seven elements and no focal point", "confidence": 0.9},
-    {"code": "OVS405", "slide": 5, "message": "Slides 4 and 5 are the same card grid", "confidence": 0.8},
-    {"code": "OVS403", "slide": 2, "message": "Logo slightly off", "confidence": 0.4},
-]}
+REVIEW = {
+    "issues": [
+        {"code": "OVS401", "slide": 3, "message": "Seven elements and no focal point", "confidence": 0.9},
+        {"code": "OVS405", "slide": 5, "message": "Slides 4 and 5 are the same card grid", "confidence": 0.8},
+        {"code": "OVS403", "slide": 2, "message": "Logo slightly off", "confidence": 0.4},
+    ]
+}
 
 
 def ctx(make_deck, builder, fake_render, model, **settings):
     builder.text("x")
-    c = Context(make_deck(builder), Settings(vision=True, **settings), render=fake_render([[], []]),
-                vision_model=model)
+    c = Context(make_deck(builder), Settings(vision=True, **settings), render=fake_render([[], []]), vision_model=model)
     c.render.contact_sheet = c.render.pages[0].image
     return c
 

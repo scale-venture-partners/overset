@@ -20,6 +20,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
+MAX_PART_BYTES = 64 * 1024 * 1024  # an XML part larger than this is not read
 CT_NS = "{http://schemas.openxmlformats.org/package/2006/content-types}"
 REL_NS = "{http://schemas.openxmlformats.org/package/2006/relationships}"
 
@@ -53,6 +54,11 @@ def check(path: str | Path) -> list[str]:
         parsed = {}
         for name in names:
             if name.endswith((".xml", ".rels")):
+                if z.getinfo(name).file_size > MAX_PART_BYTES:
+                    problems.append(
+                        f"{name} is larger than {MAX_PART_BYTES // 2**20} MB uncompressed, so it was not read"
+                    )
+                    continue
                 try:
                     parsed[name] = ET.fromstring(z.read(name))
                 except ET.ParseError as e:
@@ -68,8 +74,9 @@ def check(path: str | Path) -> list[str]:
                 continue
             ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
             if ext not in defaults:
-                problems.append(f"{name} has no content type: no <Default Extension=\"{ext}\"> or <Override> "
-                                f"in [Content_Types].xml")
+                problems.append(
+                    f'{name} has no content type: no <Default Extension="{ext}"> or <Override> in [Content_Types].xml'
+                )
         for part in sorted(overrides):
             if part.lstrip("/") not in parts:
                 problems.append(f"[Content_Types].xml declares {part}, which is not in the package")
@@ -82,8 +89,9 @@ def check(path: str | Path) -> list[str]:
                 if rel.get("TargetMode") == "External":
                     continue
                 target = rel.get("Target", "")
-                resolved = target.lstrip("/") if target.startswith("/") else posixpath.normpath(
-                    posixpath.join(base, target))
+                resolved = (
+                    target.lstrip("/") if target.startswith("/") else posixpath.normpath(posixpath.join(base, target))
+                )
                 if resolved not in parts:
                     problems.append(f"{name} points {rel.get('Id')} at {target}, which is not in the package")
         return problems
@@ -93,6 +101,8 @@ def fix_hint(problem: str) -> str:
     """What to do about one problem, when there is a usual cause."""
     m = re.search(r"has no content type: no <Default Extension=\"(\w+)\">", problem)
     if m and m.group(1) in ("jpg", "jpe", "tif", "gif", "bmp"):
-        return (f"a .{m.group(1)} picture was added without registering its type; save the picture as .png or "
-                ".jpeg before adding it, or register the extension")
+        return (
+            f"a .{m.group(1)} picture was added without registering its type; save the picture as .png or "
+            ".jpeg before adding it, or register the extension"
+        )
     return ""

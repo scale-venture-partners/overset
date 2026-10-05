@@ -68,8 +68,11 @@ def review(ctx) -> Review:
         from pydantic_ai import Agent, BinaryContent
 
         settings = ctx.settings
-        agent = Agent(ctx.vision_model or settings.vision_model, output_type=Review,
-                      instructions=instructions(settings.vision_brief))
+        agent = Agent(
+            ctx.vision_model or settings.vision_model,
+            output_type=Review,
+            instructions=instructions(settings.vision_brief),
+        )
         parts: list = [f"A deck of {len(ctx.render.pages)} slides."]
         if settings.vision_input in ("slides", "both"):
             for page in ctx.render.pages:
@@ -84,8 +87,12 @@ def _register(code, name, summary):
     @rule(code, name, summary, "vision", default=False)
     def check(ctx):
         threshold = ctx.settings.vision_threshold
-        return [finding(ctx, code, i.message, i.slide, confidence=i.confidence)
-                for i in review(ctx).issues if i.code == code and i.confidence >= threshold]
+        return [
+            finding(ctx, code, i.message, i.slide, confidence=i.confidence)
+            for i in review(ctx).issues
+            if i.code == code and i.confidence >= threshold
+        ]
+
     return check
 
 

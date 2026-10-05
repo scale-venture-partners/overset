@@ -34,7 +34,8 @@ def test_vision_turns_on_every_vision_rule():
 def test_config_is_found_upward_and_paths_resolve_against_it(tmp_path):
     (tmp_path / "fonts").mkdir()
     (tmp_path / "overset.toml").write_text(
-        'ignore = ["OVS203"]\nmin-font-pt = 12\npalette = ["#00C853"]\nfont-dirs = ["fonts"]\n')
+        'ignore = ["OVS203"]\nmin-font-pt = 12\npalette = ["#00C853"]\nfont-dirs = ["fonts"]\n'
+    )
     deep = tmp_path / "a" / "b"
     deep.mkdir(parents=True)
     s = settings_mod.load(start=deep)
@@ -44,7 +45,7 @@ def test_config_is_found_upward_and_paths_resolve_against_it(tmp_path):
 
 
 def test_pyproject_tool_table_is_read(tmp_path):
-    (tmp_path / "pyproject.toml").write_text('[tool.overset]\nmax-words = 40\n')
+    (tmp_path / "pyproject.toml").write_text("[tool.overset]\nmax-words = 40\n")
     assert settings_mod.load(start=tmp_path).max_words == 40
 
 
@@ -101,6 +102,7 @@ def test_json_output_is_one_object_per_deck(builder, tmp_path, capsys):
 def test_a_failed_render_skips_those_rules_and_says_so(builder, tmp_path, monkeypatch):
     def fail(*a, **kw):
         raise render_mod.RenderError("LibreOffice (soffice) is not installed")
+
     monkeypatch.setattr(render_mod, "render", fail)
     builder.text("Fine print", size=6)
     result = engine.lint(builder.save(tmp_path / "d.pptx"), Settings())

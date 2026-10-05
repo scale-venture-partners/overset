@@ -74,6 +74,7 @@ def builder():
 def make_deck(tmp_path):
     def make(b: DeckBuilder, name="deck.pptx"):
         return load(b.save(tmp_path / name))
+
     return make
 
 
@@ -90,6 +91,7 @@ def word(text, x, y, w, h, block=0, line=0) -> Word:
 @pytest.fixture
 def fake_render(tmp_path):
     """A Render with chosen words, over a plain image per page."""
+
     def make(pages_words, color="white", dpi=40, draw=None):
         pages = []
         for n, words in enumerate(pages_words, start=1):
@@ -100,7 +102,5 @@ def fake_render(tmp_path):
             image.save(path)
             pages.append(Page(n, words, path, dpi))
         return Render(pages, tmp_path)
+
     return make
-
-
-

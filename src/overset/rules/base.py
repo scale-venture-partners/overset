@@ -48,9 +48,11 @@ REGISTRY: dict[str, Rule] = {}
 
 def rule(code, name, summary, kind, explanation="", default=True, severity="warning"):
     """Register the decorated function as a rule's check."""
+
     def wrap(fn):
         REGISTRY[code] = Rule(code, name, summary, kind, fn, explanation, default, severity)
         return fn
+
     return wrap
 
 

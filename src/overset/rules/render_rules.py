@@ -44,8 +44,12 @@ METRIC_SLACK = 0.3
 
 def fits(frame: Box, word, tol: int) -> bool:
     v = max(tol, round(METRIC_SLACK * word.box.h))
-    return (word.box.x >= frame.x - tol and word.box.right <= frame.right + tol
-            and word.box.y >= frame.y - v and word.box.bottom <= frame.bottom + v)
+    return (
+        word.box.x >= frame.x - tol
+        and word.box.right <= frame.right + tol
+        and word.box.y >= frame.y - v
+        and word.box.bottom <= frame.bottom + v
+    )
 
 
 def ink(word) -> Box:
@@ -85,8 +89,11 @@ def assign_owners(words, shapes, tol) -> list:
     its next token matches, else a frame whose sequence it starts or resumes.
     Geometry is the fallback. Returns a Shape, or None, per word.
     """
-    seqs = {id(s): [_token(t) for t in s.text.split()] for s in shapes
-            if s.box is not None and s.kind in ("text", "table", "group") and s.text.strip()}
+    seqs = {
+        id(s): [_token(t) for t in s.text.split()]
+        for s in shapes
+        if s.box is not None and s.kind in ("text", "table", "group") and s.text.strip()
+    }
     by_id = {id(s): s for s in shapes}
     pos = dict.fromkeys(seqs, 0)
     current, out = None, []
@@ -111,7 +118,7 @@ def assign_owners(words, shapes, tol) -> list:
         if token and current is not None and current in column and advance(current, token):
             owner = current
         elif token:
-            resuming = [o for o in candidates if pos[id(o)] and seqs[id(o)][pos[id(o)]:pos[id(o)] + 1] == [token]]
+            resuming = [o for o in candidates if pos[id(o)] and seqs[id(o)][pos[id(o)] : pos[id(o)] + 1] == [token]]
             starting = [o for o in candidates if not pos[id(o)] and seqs[id(o)][:1] == [token]]
             pick = resuming or starting or candidates
             if pick:
@@ -138,9 +145,15 @@ def _text(words) -> str:
     return clip(" ".join(w.text for w in words))
 
 
-@rule("OVS001", "text-off-slide", "Rendered text runs past the slide edge", "render", severity="error",
-      explanation="Measured from the render: the words are drawn outside the slide, where no one will see "
-                  "them. The usual cause is a bottom-anchored title that grew upward past the top.")
+@rule(
+    "OVS001",
+    "text-off-slide",
+    "Rendered text runs past the slide edge",
+    "render",
+    severity="error",
+    explanation="Measured from the render: the words are drawn outside the slide, where no one will see "
+    "them. The usual cause is a bottom-anchored title that grew upward past the top.",
+)
 def text_off_slide(ctx):
     out, frame, tol = [], ctx.deck.frame, ctx.settings.tolerance_emu
     for page in ctx.render.pages:
@@ -160,11 +173,17 @@ def text_off_slide(ctx):
     return out
 
 
-@rule("OVS002", "text-overflows-frame", "Rendered text spills out of its own frame", "render", severity="error",
-      explanation="The words belong to a frame whose box ends before they do, in the layout PowerPoint "
-                  "shows (shrink-to-fit frozen at its stored scale). Frames set to grow with their text are "
-                  "exempt -- for those, the box is stale, not the layout wrong; OVS001 and OVS003 "
-                  "still catch them when the growth runs off the slide or into something else.")
+@rule(
+    "OVS002",
+    "text-overflows-frame",
+    "Rendered text spills out of its own frame",
+    "render",
+    severity="error",
+    explanation="The words belong to a frame whose box ends before they do, in the layout PowerPoint "
+    "shows (shrink-to-fit frozen at its stored scale). Frames set to grow with their text are "
+    "exempt -- for those, the box is stale, not the layout wrong; OVS001 and OVS003 "
+    "still catch them when the growth runs off the slide or into something else.",
+)
 def text_overflows_frame(ctx):
     out, tol = [], ctx.settings.tolerance_emu
     for page in ctx.render.pages:
@@ -179,10 +198,15 @@ def text_overflows_frame(ctx):
     return out
 
 
-@rule("OVS003", "text-collision", "Text from two frames is drawn on top of each other", "render",
-      explanation="Words owned by different text frames whose ink overlaps. Ownership comes from the deck, "
-                  "not the renderer's grouping: when two frames overflow into each other, pdftotext merges "
-                  "their interleaved lines into one block, which is exactly the case to catch.")
+@rule(
+    "OVS003",
+    "text-collision",
+    "Text from two frames is drawn on top of each other",
+    "render",
+    explanation="Words owned by different text frames whose ink overlaps. Ownership comes from the deck, "
+    "not the renderer's grouping: when two frames overflow into each other, pdftotext merges "
+    "their interleaved lines into one block, which is exactly the case to catch.",
+)
 def text_collision(ctx):
     out, tol = [], ctx.settings.tolerance_emu
     for page in ctx.render.pages:
@@ -200,8 +224,15 @@ def text_collision(ctx):
                     key = tuple(sorted((owners[i], owners[j])))
                     hits.setdefault(key, [a, words[j]])
         for (x, y), (a, b) in sorted(hits.items()):
-            out.append(finding(ctx, "OVS003", f"'{x}' and '{y}' are drawn over each other", page.number,
-                               clip(f"{a.text} / {b.text}", 120)))
+            out.append(
+                finding(
+                    ctx,
+                    "OVS003",
+                    f"'{x}' and '{y}' are drawn over each other",
+                    page.number,
+                    clip(f"{a.text} / {b.text}", 120),
+                )
+            )
     return out
 
 
@@ -209,6 +240,7 @@ def _luminance(rgb) -> float:
     def channel(c):
         c = c / 255
         return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
     r, g, b = rgb
     return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
 
@@ -266,9 +298,14 @@ def sample_contrast(image, boxes, dpi) -> float | None:
     return max(contrast_ratio(background, c) for c in candidates)
 
 
-@rule("OVS104", "low-contrast", "Text too close in tone to what is behind it", "render",
-      explanation="Sampled from the rendered pixels, so it holds over images, gradients and theme colours "
-                  "the file never states as RGB. The threshold is WCAG's 3:1 for large text by default.")
+@rule(
+    "OVS104",
+    "low-contrast",
+    "Text too close in tone to what is behind it",
+    "render",
+    explanation="Sampled from the rendered pixels, so it holds over images, gradients and theme colours "
+    "the file never states as RGB. The threshold is WCAG's 3:1 for large text by default.",
+)
 def low_contrast(ctx):
     from PIL import Image
 
@@ -279,6 +316,7 @@ def low_contrast(ctx):
             for words in _by_block(page.words).values():
                 ratio = sample_contrast(image, [w.box for w in words], page.dpi)
                 if ratio is not None and ratio < floor:
-                    out.append(finding(ctx, "OVS104", f"contrast {ratio:.1f}:1, under {floor:g}:1", page.number,
-                                       _text(words)))
+                    out.append(
+                        finding(ctx, "OVS104", f"contrast {ratio:.1f}:1, under {floor:g}:1", page.number, _text(words))
+                    )
     return out

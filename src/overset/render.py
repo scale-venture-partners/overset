@@ -23,6 +23,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from overset.deck import Box, Deck
 
@@ -74,11 +75,11 @@ def _font_env(font_dirs: list[Path], workdir: Path) -> dict:
     dirs = [d for d in font_dirs if d.is_dir()]
     if dirs:
         conf = workdir / "fonts.conf"
-        entries = "".join(f"  <dir>{d.resolve()}</dir>\n" for d in dirs)
+        entries = "".join(f"  <dir>{escape(str(d.resolve()))}</dir>\n" for d in dirs)
         conf.write_text(
             '<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n<fontconfig>\n'
             f'{entries}  <include ignore_missing="yes">/etc/fonts/fonts.conf</include>\n'
-            f"  <cachedir>{workdir / 'fontcache'}</cachedir>\n</fontconfig>\n"
+            f"  <cachedir>{escape(str(workdir / 'fontcache'))}</cachedir>\n</fontconfig>\n"
         )
         env["FONTCONFIG_FILE"] = str(conf)
     return env
@@ -101,8 +102,19 @@ def to_pdf(pptx: Path, workdir: Path, font_dirs=()) -> Path:
     if soffice is None:
         raise RenderError("LibreOffice (soffice) is not installed")
     profile = workdir / "lo-profile"  # isolated, so a running LibreOffice doesn't block this one
-    _run([soffice, f"-env:UserInstallation=file://{profile}", "--headless", "--convert-to", "pdf",
-          "--outdir", str(workdir), str(pptx)], env=_font_env(list(font_dirs), workdir))
+    _run(
+        [
+            soffice,
+            f"-env:UserInstallation=file://{profile}",
+            "--headless",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            str(workdir),
+            str(pptx),
+        ],
+        env=_font_env(list(font_dirs), workdir),
+    )
     pdf = workdir / (pptx.stem + ".pdf")
     if not pdf.exists():
         raise RenderError("LibreOffice produced no PDF")
@@ -153,13 +165,19 @@ def _freeze_body(body: str) -> str:
     attrs = m.group(1) if m.group(1) is not None else m.group(2)
     scale = (_attr(attrs, "fontScale") or 100_000) / 100_000
     reduction = (_attr(attrs, "lnSpcReduction") or 0) / 100_000
-    body = body[:m.start()] + "<a:noAutofit/>" + body[m.end():]
+    body = body[: m.start()] + "<a:noAutofit/>" + body[m.end() :]
     if scale != 1:
-        body = re.sub(r'(<a:(?:rPr|endParaRPr|defRPr)\b[^>]*?\bsz=")(\d+)(")',
-                      lambda r: f"{r.group(1)}{max(100, round(int(r.group(2)) * scale))}{r.group(3)}", body)
+        body = re.sub(
+            r'(<a:(?:rPr|endParaRPr|defRPr)\b[^>]*?\bsz=")(\d+)(")',
+            lambda r: f"{r.group(1)}{max(100, round(int(r.group(2)) * scale))}{r.group(3)}",
+            body,
+        )
     if reduction:
-        body = re.sub(r'(<a:lnSpc><a:spcPct val=")(\d+)(")',
-                      lambda r: f"{r.group(1)}{round(int(r.group(2)) * (1 - reduction))}{r.group(3)}", body)
+        body = re.sub(
+            r'(<a:lnSpc><a:spcPct val=")(\d+)(")',
+            lambda r: f"{r.group(1)}{round(int(r.group(2)) * (1 - reduction))}{r.group(3)}",
+            body,
+        )
     return body
 
 
@@ -175,8 +193,14 @@ def as_powerpoint_shows_it(pptx: Path, out: Path) -> Path:
     return out
 
 
-def render(deck: Deck, workdir: Path | None = None, font_dirs=(), dpi: int = DEFAULT_DPI,
-           contact_sheet: bool = False, as_powerpoint: bool = True) -> Render:
+def render(
+    deck: Deck,
+    workdir: Path | None = None,
+    font_dirs=(),
+    dpi: int = DEFAULT_DPI,
+    contact_sheet: bool = False,
+    as_powerpoint: bool = True,
+) -> Render:
     workdir = Path(workdir or tempfile.mkdtemp(prefix="overset-"))
     workdir.mkdir(parents=True, exist_ok=True)
     source = deck.path.resolve()

@@ -63,10 +63,18 @@ def test_not_a_zip_and_no_content_types(sound, tmp_path):
 
 
 def test_an_unloadable_deck_is_a_finding_not_a_crash(sound, tmp_path):
-    broken = rewrite(sound, tmp_path / "jpg.pptx", add={"ppt/media/image9.jpg": b"\xff\xd8"},
-                     replace={"ppt/slides/_rels/slide1.xml.rels": lambda x: x.replace(
-                         "</Relationships>", '<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/'
-                         'officeDocument/2006/relationships/image" Target="../media/image9.jpg"/></Relationships>')})
+    broken = rewrite(
+        sound,
+        tmp_path / "jpg.pptx",
+        add={"ppt/media/image9.jpg": b"\xff\xd8"},
+        replace={
+            "ppt/slides/_rels/slide1.xml.rels": lambda x: x.replace(
+                "</Relationships>",
+                '<Relationship Id="rId99" Type="http://schemas.openxmlformats.org/'
+                'officeDocument/2006/relationships/image" Target="../media/image9.jpg"/></Relationships>',
+            )
+        },
+    )
     result = lint(broken, Settings(render=False))
     assert [f.code for f in result.findings] == ["OVS000"] and result.findings[0].slide is None
     assert "could not be loaded" in result.notes[0] and "so no other rule ran" in result.notes[0]
@@ -75,8 +83,15 @@ def test_an_unloadable_deck_is_a_finding_not_a_crash(sound, tmp_path):
 def test_a_loadable_deck_with_a_package_problem_still_gets_every_rule(builder, tmp_path):
     builder.text("Fine print", size=6)
     src = builder.save(tmp_path / "d.pptx")
-    stale = rewrite(src, tmp_path / "stale.pptx", replace={"[Content_Types].xml": lambda x: x.replace(
-        "</Types>", '<Override PartName="/ppt/ghost.xml" ContentType="application/xml"/></Types>')})
+    stale = rewrite(
+        src,
+        tmp_path / "stale.pptx",
+        replace={
+            "[Content_Types].xml": lambda x: x.replace(
+                "</Types>", '<Override PartName="/ppt/ghost.xml" ContentType="application/xml"/></Types>'
+            )
+        },
+    )
     codes = sorted(f.code for f in lint(stale, Settings(render=False)).findings)
     assert codes == ["OVS000", "OVS101"]
 
@@ -84,3 +99,15 @@ def test_a_loadable_deck_with_a_package_problem_still_gets_every_rule(builder, t
 def test_the_package_rule_can_be_ignored(sound, tmp_path):
     broken = rewrite(sound, tmp_path / "jpg.pptx", add={"ppt/media/image9.jpg": b"\xff\xd8"})
     assert lint(broken, Settings(render=False, ignore=("OVS000",))).findings == []
+
+
+def test_an_oversized_xml_part_is_reported_not_parsed(tmp_path, monkeypatch):
+    from overset import package
+
+    monkeypatch.setattr(package, "MAX_PART_BYTES", 10)
+    with zipfile.ZipFile(tmp_path / "big.pptx", "w") as z:
+        z.writestr(
+            "[Content_Types].xml", "<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'/>"
+        )
+    (problem, *_) = package.check(tmp_path / "big.pptx")
+    assert "larger than" in problem

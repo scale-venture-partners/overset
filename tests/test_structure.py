@@ -49,7 +49,7 @@ def test_fonts_are_only_checked_once_a_brand_set_is_configured(builder, make_dec
     builder.text("Brand", y=3, font="Inter")
     deck = make_deck(builder)
     assert check("OVS102", deck) == []
-    (f,) = check("OVS102", deck, Settings(fonts=["Inter"]))
+    (f,) = check("OVS102", deck, Settings(fonts=["Inter", "Lora"]))
     assert "Comic Sans MS" in f.message
 
 

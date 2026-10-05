@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -60,19 +62,30 @@ def lint(path: str | Path, settings: Settings, workdir: Path | None = None, visi
     codes = [c for c in codes if c != "OVS000"]
 
     needs_render = [c for c in codes if REGISTRY[c].kind in ("render", "vision")]
-    if needs_render:
-        try:
-            wants_sheet = any(REGISTRY[c].kind == "vision" for c in codes)
-            ctx.render = render_mod.render(deck, workdir, settings.font_dirs, contact_sheet=wants_sheet,
-                                           as_powerpoint=settings.render_as == "powerpoint")
-            result.rendered = True
-            result.notes += ctx.render.notes
-        except render_mod.RenderError as e:
-            # Structure rules still run; the render rules are reported as skipped, not passed.
-            result.skipped = needs_render
-            result.notes.append(f"render failed, so {', '.join(needs_render)} did not run: {e}")
-            codes = [c for c in codes if c not in needs_render]
+    # A render of a private deck is deleted unless the caller asked to keep it.
+    scratch = Path(tempfile.mkdtemp(prefix="overset-")) if needs_render and workdir is None else None
+    try:
+        if needs_render:
+            try:
+                wants_sheet = any(REGISTRY[c].kind == "vision" for c in codes)
+                ctx.render = render_mod.render(
+                    deck,
+                    scratch or workdir,
+                    settings.font_dirs,
+                    contact_sheet=wants_sheet,
+                    as_powerpoint=settings.render_as == "powerpoint",
+                )
+                result.rendered = True
+                result.notes += ctx.render.notes
+            except render_mod.RenderError as e:
+                # Structure rules still run; the render rules are reported as skipped, not passed.
+                result.skipped = needs_render
+                result.notes.append(f"render failed, so {', '.join(needs_render)} did not run: {e}")
+                codes = [c for c in codes if c not in needs_render]
 
-    for code in codes:
-        result.findings += REGISTRY[code].check(ctx)
+        for code in codes:
+            result.findings += REGISTRY[code].check(ctx)
+    finally:
+        if scratch is not None:
+            shutil.rmtree(scratch, ignore_errors=True)
     return result

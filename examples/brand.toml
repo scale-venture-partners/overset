@@ -1,0 +1,17 @@
+# A minimal brand configuration: a font family, a small palette, a house-style
+# note for the vision reviewer. Copy it next to your decks as overset.toml, or
+# pass --config.
+
+fonts = ["Inter"]
+palette = [
+  "FFFFFF", "20211B", "F7F5F2",   # white, ink, paper
+  "00C756", "008037",             # green accent and its dark shade
+]
+
+min-font-pt = 10
+max-words = 90
+
+vision-brief = """
+Decks use a paper (#F7F5F2) or ink (#20211B) background and one green accent per slide.
+A highlighted card is meant to differ from its siblings -- that is emphasis, not misalignment.
+"""

@@ -13,9 +13,11 @@ from overset.engine import lint
 from overset.render import _freeze_body, as_powerpoint_shows_it
 from overset.settings import Settings
 
-BODY = ('<p:txBody><a:bodyPr wrap="square">{fit}</a:bodyPr><a:p><a:pPr><a:lnSpc><a:spcPct val="135000"/>'
-        '</a:lnSpc></a:pPr><a:r><a:rPr lang="en-US" sz="1400"/><a:t>x</a:t></a:r>'
-        '<a:endParaRPr sz="1400"/></a:p></p:txBody>')
+BODY = (
+    '<p:txBody><a:bodyPr wrap="square">{fit}</a:bodyPr><a:p><a:pPr><a:lnSpc><a:spcPct val="135000"/>'
+    '</a:lnSpc></a:pPr><a:r><a:rPr lang="en-US" sz="1400"/><a:t>x</a:t></a:r>'
+    '<a:endParaRPr sz="1400"/></a:p></p:txBody>'
+)
 
 
 def test_a_bare_shrink_is_frozen_at_full_size():
@@ -49,8 +51,15 @@ def test_the_copy_freezes_slides_and_leaves_everything_else(builder, tmp_path):
 def test_text_that_only_fits_because_libreoffice_shrinks_it_is_caught(builder, tmp_path):
     from pptx.oxml.ns import qn
 
-    box = builder.text("Who outranks whom? A banned phrase, a compliance rule, a user's verbatim request: "
-                       "when they conflict, which wins?", x=8, y=3, w=3.6, h=0.6, size=14)
+    box = builder.text(
+        "Who outranks whom? A banned phrase, a compliance rule, a user's verbatim request: "
+        "when they conflict, which wins?",
+        x=8,
+        y=3,
+        w=3.6,
+        h=0.6,
+        size=14,
+    )
     body = box.text_frame._txBody.bodyPr
     for child in list(body):
         body.remove(child)

@@ -40,7 +40,7 @@ class Settings:
     palette_tolerance: float = 12.0
     fonts: list[str] = field(default_factory=list)
     font_dirs: list[Path] = field(default_factory=list)
-    vision_model: str = "anthropic:claude-sonnet-4-6"
+    vision_model: str = "anthropic:claude-sonnet-5-5"
     vision_threshold: float = 0.7
     vision_input: str = "both"  # "slides" | "sheet" | "both"
     vision_brief: str = ""

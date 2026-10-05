@@ -22,8 +22,9 @@ def check(code, deck, render, settings=None):
 def test_words_past_the_top_are_off_the_slide(builder, make_deck, fake_render):
     builder.text("Eight of our 24 portfolio companies", y=0.2)
     deck = make_deck(builder)
-    render = fake_render([[word("Eight", 1, -0.6, 1, 0.5), word("of", 2.1, -0.6, 0.3, 0.5),
-                           word("companies", 1, 0.3, 2, 0.5, block=1)]])
+    render = fake_render(
+        [[word("Eight", 1, -0.6, 1, 0.5), word("of", 2.1, -0.6, 0.3, 0.5), word("companies", 1, 0.3, 2, 0.5, block=1)]]
+    )
     (f,) = check("OVS001", deck, render)
     assert f.message == "text runs off the top of the slide" and f.snippet == "Eight of"
 
@@ -31,8 +32,15 @@ def test_words_past_the_top_are_off_the_slide(builder, make_deck, fake_render):
 def test_each_edge_is_named(builder, make_deck, fake_render):
     builder.text("x")
     deck = make_deck(builder)
-    render = fake_render([[word("right", 13, 3, 1, 0.3, block=0), word("bottom", 3, 7.4, 1, 0.3, block=1),
-                           word("left", -0.5, 3, 1, 0.3, block=2)]])
+    render = fake_render(
+        [
+            [
+                word("right", 13, 3, 1, 0.3, block=0),
+                word("bottom", 3, 7.4, 1, 0.3, block=1),
+                word("left", -0.5, 3, 1, 0.3, block=2),
+            ]
+        ]
+    )
     assert sorted(f.message.split()[4] for f in check("OVS001", deck, render)) == ["bottom", "left", "right"]
 
 
@@ -96,6 +104,7 @@ def _paint(fg, rect):
     def draw(n, image, dpi):
         x, y, w, h = rect
         ImageDraw.Draw(image).rectangle([x * dpi, y * dpi, (x + w) * dpi, (y + h) * dpi], fill=fg)
+
     return draw
 
 
@@ -117,6 +126,7 @@ def test_dark_digits_on_a_dot_smaller_than_their_box_are_legible(builder, make_d
         d = ImageDraw.Draw(image)
         d.ellipse([1.05 * dpi, 1.0 * dpi, 1.45 * dpi, 1.4 * dpi], fill=(0, 199, 86))
         d.rectangle([1.17 * dpi, 1.1 * dpi, 1.33 * dpi, 1.3 * dpi], fill=(32, 33, 27))
+
     builder.text("01")
     render = fake_render([[word("01", 1.0, 1.0, 0.5, 0.4)]], color=(247, 245, 242), dpi=80, draw=draw)
     assert check("OVS104", make_deck(builder), render) == []
@@ -157,8 +167,8 @@ def test_pdftotext_boxes_are_converted_to_slide_emu(builder, make_deck):
 
 # -- collisions by ownership --------------------------------------------------
 
-def test_frames_overflowing_into_each_other_collide_even_when_the_renderer_merges_them(
-        builder, make_deck, fake_render):
+
+def test_frames_overflowing_into_each_other_collide_even_when_the_renderer_merges_them(builder, make_deck, fake_render):
     # Two questions stacked in fixed boxes, both overflowing: pdftotext puts
     # their interleaved lines in one block, so only the deck can tell them apart.
     builder.text("when they conflict which wins", x=8, y=3, w=4, h=0.4)
@@ -185,9 +195,12 @@ def test_a_word_that_overflowed_into_a_frame_sharing_it_is_still_its_own_frames(
     builder.text("Two rules removed rather than shipped.", x=1, y=1.45, w=5, h=0.4)
     deck = make_deck(builder)
     words = [word(t, 1 + i * 0.7, 1.05, 0.6, 0.3, block=0) for i, t in enumerate("Case is invisible to phrase".split())]
-    words += [word("rules", 1.0, 1.42, 0.6, 0.3, block=0, line=1),
-              word("Two", 1.0, 1.47, 0.4, 0.3, block=1), word("rules", 1.5, 1.47, 0.6, 0.3, block=1),
-              word("removed", 2.2, 1.47, 0.8, 0.3, block=1)]
+    words += [
+        word("rules", 1.0, 1.42, 0.6, 0.3, block=0, line=1),
+        word("Two", 1.0, 1.47, 0.4, 0.3, block=1),
+        word("rules", 1.5, 1.47, 0.6, 0.3, block=1),
+        word("removed", 2.2, 1.47, 0.8, 0.3, block=1),
+    ]
     render = fake_render([words])
     (spill,) = check("OVS002", deck, render)
     assert spill.message == "text spills out of 'TextBox 1'" and spill.snippet == "rules"
@@ -201,8 +214,14 @@ def test_a_row_of_cards_read_across_the_columns_keeps_each_word_in_its_card(buil
     builder.text("Instructions on how to build a chart.", x=1, y=4, w=1.6, h=1.5)
     builder.text("A typed Python API.", x=3, y=4, w=1.6, h=1.5)
     deck = make_deck(builder)
-    words = [word("Instructions", 1.0, 4.1, 0.9, 0.25), word("on", 1.95, 4.1, 0.2, 0.25),
-             word("how", 2.2, 4.1, 0.3, 0.25), word("A", 3.0, 4.1, 0.1, 0.25, block=1),
-             word("typed", 3.15, 4.1, 0.4, 0.25, block=1), word("to", 1.0, 4.4, 0.2, 0.25),
-             word("build", 1.25, 4.4, 0.4, 0.25), word("a", 1.7, 4.4, 0.1, 0.25)]
+    words = [
+        word("Instructions", 1.0, 4.1, 0.9, 0.25),
+        word("on", 1.95, 4.1, 0.2, 0.25),
+        word("how", 2.2, 4.1, 0.3, 0.25),
+        word("A", 3.0, 4.1, 0.1, 0.25, block=1),
+        word("typed", 3.15, 4.1, 0.4, 0.25, block=1),
+        word("to", 1.0, 4.4, 0.2, 0.25),
+        word("build", 1.25, 4.4, 0.4, 0.25),
+        word("a", 1.7, 4.4, 0.1, 0.25),
+    ]
     assert check("OVS002", deck, fake_render([words])) == []

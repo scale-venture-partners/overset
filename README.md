@@ -1,5 +1,10 @@
 # overset
 
+> **Status: alpha (0.1.0).** Rule codes and config keys may still change. Render rules depend on
+> LibreOffice and poppler, and thresholds are tuned on a limited set of decks. The vision rules are
+> experimental, and "as PowerPoint shows it" is an emulation of PowerPoint's layout in LibreOffice, not
+> PowerPoint itself.
+
 A deck linter. It renders a `.pptx` and **measures** what each slide actually
 shows: text off the slide, text spilling out of its frame, frames colliding,
 type too small, text too faint, fonts and colours off the brand. It reports
@@ -17,13 +22,13 @@ product_overview.pptx:slide 4: OVS203 99 words, over 90
 
 *Overset* is the typesetter's word for text that doesn't fit its frame.
 
-It is the companion to [riff](https://github.com/scale-venture-partners/riff),
-which lints a deck's *words*. overset lints what the words *look like* on the
-slide. 
+It is the companion to [riff](https://github.com/scale-venture-partners/riff), which lints a deck's
+*words*. overset lints what the words *look like* on the slide.
+
 ## Why measure
 
 A model reviewing its own slides misses things. A generated deck that the model had inspected slide by
-slide still shipped with a title ran off the top of the slide and a caption had slid out of its
+slide still shipped with a title running off the top of the slide and a caption slid out of its
 highlight pill. Both are measurable: LibreOffice renders the deck, and
 poppler's `pdftotext -bbox-layout` reports every word's box, including words
 pushed past the slide edge, which come back with negative coordinates. overset
@@ -99,9 +104,9 @@ Before rendering, overset freezes every shrink-to-fit box at its stored `fontSca
 `lnSpcReduction` (100% and 0 when absent). LibreOffice then draws PowerPoint's layout: the same line
 breaks, and the same text running into the next box. `render-as = "libreoffice"` turns this off.
 
-*Seen in practice:* a generated deck rendered cleanly in LibreOffice previews, and the cover subtitle and closing questions overlapped when the deck was opened in
-PowerPoint. The generator wrote a bare `normAutofit` and sized its boxes by estimate, counting on
-a shrink that PowerPoint never applied.
+*Seen in practice:* a generated deck rendered cleanly in LibreOffice previews, yet its cover subtitle and
+closing questions overlapped when opened in PowerPoint. The generator wrote a bare `normAutofit` and sized
+its boxes by estimate, counting on a shrink that PowerPoint never applied.
 
 ### Measurement notes
 
@@ -140,7 +145,7 @@ found from the deck's folder upward. Flags override it.
 select = ["OVS0", "OVS1"]           # omit for every default-on rule
 ignore = ["OVS203"]
 extend-select = ["OVS301"]
-fonts = ["Inter"]         # by family: "Inter Medium" is Inter
+fonts = ["Inter"]                   # by family: "Inter Medium" is Inter
 palette = ["20211B", "F7F5F2", "00C756"]
 palette-tolerance = 12              # RGB distance
 font-dirs = ["fonts/"]              # relative to this file
@@ -151,18 +156,21 @@ tolerance-pt = 2.0
 render = true
 render-as = "powerpoint"            # or "libreoffice": don't freeze shrink-to-fit
 vision = false
-vision-model = "anthropic:claude-sonnet-4-6"
+vision-model = "anthropic:claude-sonnet-5-5"
 vision-threshold = 0.7
 vision-input = "both"               # "slides" | "sheet" | "both"
 vision-brief = "House style the reviewer should know."
 ```
 
-`examples/brand.toml` is a small example configuration.
+`examples/brand.toml` is a small example: one font, a five-colour palette, and a vision brief.
 
 ## Development
 
 ```console
 uv sync
 uv run pytest -q --cov     # integration tests skip without LibreOffice
+uv run ruff format src tests
 uv run ruff check src tests
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.

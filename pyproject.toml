@@ -3,6 +3,8 @@ name = "overset"
 version = "0.1.0"
 description = "A deck linter: measures what a slide actually renders -- text off the slide, out of its box, colliding, too small, too faint, off-brand -- with ruff-style rule codes"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Scale Venture Partners" }]
 keywords = ["linter", "powerpoint", "pptx", "slides", "layout", "brand", "accessibility"]
@@ -18,6 +20,9 @@ dependencies = [
   "python-pptx>=1.0",
   "pillow>=10",
 ]
+
+[project.urls]
+Repository = "https://github.com/scale-venture-partners/overset"
 
 [project.optional-dependencies]
 # The vision rules: one model call over the rendered deck. Everything else is offline.

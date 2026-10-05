@@ -6,8 +6,8 @@ from overset.rules.base import clip, finding, rule
 
 
 def _hex_distance(a: str, b: str) -> float:
-    ra, ga, ba = (int(a[i:i + 2], 16) for i in (0, 2, 4))
-    rb, gb, bb = (int(b[i:i + 2], 16) for i in (0, 2, 4))
+    ra, ga, ba = (int(a[i : i + 2], 16) for i in (0, 2, 4))
+    rb, gb, bb = (int(b[i : i + 2], 16) for i in (0, 2, 4))
     return ((ra - rb) ** 2 + (ga - gb) ** 2 + (ba - bb) ** 2) ** 0.5
 
 
@@ -21,19 +21,29 @@ def _family_allowed(font: str, allowed: set[str]) -> bool:
     return any(name == a or name.startswith((a + " ", a + "-")) for a in allowed)
 
 
-@rule("OVS000", "invalid-package", "The file is not a well-formed PowerPoint package", "structure",
-      severity="error",
-      explanation="A part with no content type, a relationship to a part that isn't there, or XML that doesn't "
-                  "parse. PowerPoint offers to repair such a deck when it opens; python-pptx refuses to load it. "
-                  "Checked before anything else (overset.package), so the deck's other rules don't run when it "
-                  "can't be loaded.")
+@rule(
+    "OVS000",
+    "invalid-package",
+    "The file is not a well-formed PowerPoint package",
+    "structure",
+    severity="error",
+    explanation="A part with no content type, a relationship to a part that isn't there, or XML that doesn't "
+    "parse. PowerPoint offers to repair such a deck when it opens; python-pptx refuses to load it. "
+    "Checked before anything else (overset.package), so the deck's other rules don't run when it "
+    "can't be loaded.",
+)
 def invalid_package(ctx):
     return []  # computed by the engine before the deck loads; see engine._package_findings
 
 
-@rule("OVS004", "frame-off-slide", "A text frame extends past the slide edge", "structure",
-      explanation="Measured from the file, not the render, so it holds even where a renderer clips. "
-                  "Pictures are exempt: a full-bleed image is meant to reach the edge.")
+@rule(
+    "OVS004",
+    "frame-off-slide",
+    "A text frame extends past the slide edge",
+    "structure",
+    explanation="Measured from the file, not the render, so it holds even where a renderer clips. "
+    "Pictures are exempt: a full-bleed image is meant to reach the edge.",
+)
 def frame_off_slide(ctx):
     out, tol = [], ctx.settings.tolerance_emu
     for slide in ctx.deck.slides:
@@ -41,14 +51,22 @@ def frame_off_slide(ctx):
             if shape.from_layout or shape.kind != "text" or not shape.text.strip() or shape.box is None:
                 continue
             if not ctx.deck.frame.contains(shape.box, tol):
-                out.append(finding(ctx, "OVS004", f"'{shape.name}' extends past the slide edge", slide.number,
-                                   clip(shape.text)))
+                out.append(
+                    finding(
+                        ctx, "OVS004", f"'{shape.name}' extends past the slide edge", slide.number, clip(shape.text)
+                    )
+                )
     return out
 
 
-@rule("OVS101", "text-too-small", "Text set below the minimum size", "structure",
-      explanation="Uses the stated size times any shrink-on-overflow scale, so text PowerPoint shrank to fit "
-                  "is caught at the size it is actually shown. Inherited sizes are not resolved and are skipped.")
+@rule(
+    "OVS101",
+    "text-too-small",
+    "Text set below the minimum size",
+    "structure",
+    explanation="Uses the stated size times any shrink-on-overflow scale, so text PowerPoint shrank to fit "
+    "is caught at the size it is actually shown. Inherited sizes are not resolved and are skipped.",
+)
 def text_too_small(ctx):
     out, floor = [], ctx.settings.min_font_pt
     for slide in ctx.deck.slides:
@@ -58,14 +76,22 @@ def text_too_small(ctx):
             small = [r for r in shape.runs if r.size_pt is not None and r.size_pt < floor - 0.05]
             if small:
                 size = min(r.size_pt for r in small)
-                out.append(finding(ctx, "OVS101", f"text at {size:.1f}pt, under {floor:g}pt", slide.number,
-                                   clip(small[0].text)))
+                out.append(
+                    finding(
+                        ctx, "OVS101", f"text at {size:.1f}pt, under {floor:g}pt", slide.number, clip(small[0].text)
+                    )
+                )
     return out
 
 
-@rule("OVS102", "off-brand-font", "A font outside the configured set", "structure",
-      explanation="Only stated font names are checked, by family: 'Inter Medium' is Inter. Theme fonts "
-                  "(+mj-lt, +mn-lt) are the template's own and pass. Inactive until `fonts` is configured.")
+@rule(
+    "OVS102",
+    "off-brand-font",
+    "A font outside the configured set",
+    "structure",
+    explanation="Only stated font names are checked, by family: 'Inter Medium' is Inter. Theme fonts "
+    "(+mj-lt, +mn-lt) are the template's own and pass. Inactive until `fonts` is configured.",
+)
 def off_brand_font(ctx):
     allowed = {f.lower() for f in ctx.settings.fonts}
     if not allowed:
@@ -75,17 +101,27 @@ def off_brand_font(ctx):
         seen = set()
         for shape in slide.shapes:
             for r in shape.runs:
-                if r.font and not r.font.startswith("+") and not _family_allowed(r.font, allowed) \
-                        and r.font not in seen:
+                if (
+                    r.font
+                    and not r.font.startswith("+")
+                    and not _family_allowed(r.font, allowed)
+                    and r.font not in seen
+                ):
                     seen.add(r.font)
-                    out.append(finding(ctx, "OVS102", f"font '{r.font}' is not in the brand set", slide.number,
-                                       clip(r.text)))
+                    out.append(
+                        finding(ctx, "OVS102", f"font '{r.font}' is not in the brand set", slide.number, clip(r.text))
+                    )
     return out
 
 
-@rule("OVS103", "off-palette-color", "A colour outside the configured palette", "structure",
-      explanation="Checks colours stated as RGB on text and solid fills; theme colours are the template's own "
-                  "and pass. Inactive until `palette` is configured.")
+@rule(
+    "OVS103",
+    "off-palette-color",
+    "A colour outside the configured palette",
+    "structure",
+    explanation="Checks colours stated as RGB on text and solid fills; theme colours are the template's own "
+    "and pass. Inactive until `palette` is configured.",
+)
 def off_palette_color(ctx):
     palette, tol = ctx.settings.palette, ctx.settings.palette_tolerance
     if not palette:
@@ -102,26 +138,40 @@ def off_palette_color(ctx):
             for color, where in colors:
                 if color not in seen and not _in_palette(color, palette, tol):
                     seen.add(color)
-                    out.append(finding(ctx, "OVS103", f"#{color} is not in the brand palette", slide.number,
-                                       clip(where)))
+                    out.append(
+                        finding(ctx, "OVS103", f"#{color} is not in the brand palette", slide.number, clip(where))
+                    )
     return out
 
 
-@rule("OVS201", "empty-placeholder", "A placeholder left empty", "structure",
-      explanation="An empty placeholder shows 'Click to add text' to anyone who opens the deck to edit it. "
-                  "Footer, date and slide-number placeholders are exempt.")
+@rule(
+    "OVS201",
+    "empty-placeholder",
+    "A placeholder left empty",
+    "structure",
+    explanation="An empty placeholder shows 'Click to add text' to anyone who opens the deck to edit it. "
+    "Footer, date and slide-number placeholders are exempt.",
+)
 def empty_placeholder(ctx):
     out = []
     for slide in ctx.deck.slides:
         for shape in slide.shapes:
             if shape.placeholder and not shape.quiet_placeholder and shape.kind == "text" and not shape.text.strip():
-                out.append(finding(ctx, "OVS201", f"empty {shape.placeholder.lower()} placeholder '{shape.name}'",
-                                   slide.number))
+                out.append(
+                    finding(
+                        ctx, "OVS201", f"empty {shape.placeholder.lower()} placeholder '{shape.name}'", slide.number
+                    )
+                )
     return out
 
 
-@rule("OVS202", "image-distorted", "A picture stretched out of its aspect ratio", "structure",
-      explanation="Compares the frame's aspect with the visible (cropped) source image's.")
+@rule(
+    "OVS202",
+    "image-distorted",
+    "A picture stretched out of its aspect ratio",
+    "structure",
+    explanation="Compares the frame's aspect with the visible (cropped) source image's.",
+)
 def image_distorted(ctx):
     out, limit = [], ctx.settings.max_aspect_distortion
     for slide in ctx.deck.slides:
@@ -131,8 +181,9 @@ def image_distorted(ctx):
             shown = shape.box.w / shape.box.h
             distortion = abs(shown / shape.image_aspect - 1)
             if distortion > limit:
-                out.append(finding(ctx, "OVS202", f"'{shape.name}' is stretched {distortion:.0%} out of shape",
-                                   slide.number))
+                out.append(
+                    finding(ctx, "OVS202", f"'{shape.name}' is stretched {distortion:.0%} out of shape", slide.number)
+                )
     return out
 
 
@@ -145,9 +196,15 @@ def too_many_words(ctx):
     return out
 
 
-@rule("OVS301", "repeated-layout", "Two consecutive slides use the same layout", "structure", default=False,
-      explanation="Off by default: many templates build every slide on one layout. Turn it on for templates "
-                  "where each slide type has its own.")
+@rule(
+    "OVS301",
+    "repeated-layout",
+    "Two consecutive slides use the same layout",
+    "structure",
+    default=False,
+    explanation="Off by default: many templates build every slide on one layout. Turn it on for templates "
+    "where each slide type has its own.",
+)
 def repeated_layout(ctx):
     out = []
     slides = ctx.deck.slides
@@ -155,4 +212,3 @@ def repeated_layout(ctx):
         if prev.layout == cur.layout:
             out.append(finding(ctx, "OVS301", f"same layout as slide {prev.number} ('{cur.layout}')", cur.number))
     return out
-

@@ -21,8 +21,14 @@ def test_a_title_pushed_off_the_top_is_caught_end_to_end(builder, tmp_path):
 
 @needs_libreoffice
 def test_a_fixed_frame_too_small_for_its_text_overflows(builder, tmp_path):
-    builder.text("This body text is far too long for its small fixed box and spills well past the bottom",
-                 x=1, y=3, w=2, h=0.5, size=20)
+    builder.text(
+        "This body text is far too long for its small fixed box and spills well past the bottom",
+        x=1,
+        y=3,
+        w=2,
+        h=0.5,
+        size=20,
+    )
     result = lint(builder.save(tmp_path / "deck.pptx"), Settings())
     assert [f.code for f in result.findings] == ["OVS002"]
 
@@ -42,3 +48,14 @@ def test_a_clean_deck_is_clean_and_the_contact_sheet_is_made(builder, tmp_path, 
 
     r = render_mod.render(deck_mod.load(deck), tmp_path / "r2", contact_sheet=True)
     assert len(r.pages) == 2 and r.contact_sheet.exists()
+
+
+@needs_libreoffice
+def test_the_default_render_is_deleted_after_the_run(builder, tmp_path, monkeypatch):
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr("tempfile.tempdir", str(scratch))
+    builder.text("Clean body copy that fits its frame.", x=1, y=3, w=8, h=1, size=20)
+    result = lint(builder.save(tmp_path / "deck.pptx"), Settings())
+    assert result.rendered
+    assert list(scratch.iterdir()) == []

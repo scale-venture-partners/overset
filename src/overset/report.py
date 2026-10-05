@@ -40,26 +40,36 @@ def render_text(results: list[Result], stream=None, summary: bool = True) -> Non
             print(f"All clear: {files} deck{'s' if files != 1 else ''} checked.", file=stream)
         else:
             top = ", ".join(f"{c} ×{n}" for c, n in counts.most_common())
-            print(f"\n{total} finding{'s' if total != 1 else ''} in {files} deck{'s' if files != 1 else ''} "
-                  f"({top}).", file=stream)
+            print(
+                f"\n{total} finding{'s' if total != 1 else ''} in {files} deck{'s' if files != 1 else ''} ({top}).",
+                file=stream,
+            )
 
 
 def render_json(results: list[Result], stream=None) -> None:
     stream = stream or sys.stdout
     out = []
     for r in results:
-        out.append({
-            "path": str(r.path),
-            "slides": r.slides,
-            "rendered": r.rendered,
-            "skipped": r.skipped,
-            "notes": r.notes,
-            "findings": [
-                {"code": f.code, "message": f.message, "slide": f.slide,
-                 "label": f"slide {f.slide}" if f.slide else None, "severity": f.severity,
-                 "snippet": f.snippet, "confidence": f.confidence}
-                for f in r.sorted()
-            ],
-        })
+        out.append(
+            {
+                "path": str(r.path),
+                "slides": r.slides,
+                "rendered": r.rendered,
+                "skipped": r.skipped,
+                "notes": r.notes,
+                "findings": [
+                    {
+                        "code": f.code,
+                        "message": f.message,
+                        "slide": f.slide,
+                        "label": f"slide {f.slide}" if f.slide else None,
+                        "severity": f.severity,
+                        "snippet": f.snippet,
+                        "confidence": f.confidence,
+                    }
+                    for f in r.sorted()
+                ],
+            }
+        )
     json.dump(out, stream, indent=2)
     stream.write("\n")

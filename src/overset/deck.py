@@ -44,8 +44,12 @@ class Box:
         return self.y + self.h
 
     def contains(self, other: Box, tolerance: int = 0) -> bool:
-        return (other.x >= self.x - tolerance and other.y >= self.y - tolerance
-                and other.right <= self.right + tolerance and other.bottom <= self.bottom + tolerance)
+        return (
+            other.x >= self.x - tolerance
+            and other.y >= self.y - tolerance
+            and other.right <= self.right + tolerance
+            and other.bottom <= self.bottom + tolerance
+        )
 
     def intersection(self, other: Box) -> int:
         w = min(self.right, other.right) - max(self.x, other.x)
@@ -210,4 +214,3 @@ def load(path: str | Path) -> Deck:
             shapes += [_shape(s, from_layout=True) for s in inherited if not s.is_placeholder]
         slides.append(Slide(number, slide.slide_layout.name, shapes))
     return Deck(path, int(prs.slide_width), int(prs.slide_height), slides)
-
