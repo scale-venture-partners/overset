@@ -7,6 +7,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from overset import decisions
 from overset import deck as deck_mod
 from overset import package as package_mod
 from overset import render as render_mod
@@ -19,8 +20,9 @@ class Context:
     deck: deck_mod.Deck
     settings: Settings
     render: render_mod.Render | None = None
-    vision_model: object = None  # a pydantic-ai model to use instead of settings.vision_model
+    vision_backend: object = None  # a decisions.Backend to use instead of resolving settings.vision_model
     cache: dict = field(default_factory=dict)
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -44,7 +46,7 @@ def _package_findings(path) -> list[Finding]:
     return out
 
 
-def lint(path: str | Path, settings: Settings, workdir: Path | None = None, vision_model=None) -> Result:
+def lint(path: str | Path, settings: Settings, workdir: Path | None = None, vision_backend=None) -> Result:
     codes = settings.active_codes()
     # The package first: a deck PowerPoint would have to repair is a finding, and one
     # python-pptx can't load is reported as that rather than as overset failing.
@@ -57,9 +59,13 @@ def lint(path: str | Path, settings: Settings, workdir: Path | None = None, visi
         result = Result(Path(path), package, 0, rendered=False)
         result.notes.append(f"the deck could not be loaded ({type(e).__name__}: {e}), so no other rule ran")
         return result
-    ctx = Context(deck, settings, vision_model=vision_model)
     result = Result(Path(path), list(package), len(deck.slides), rendered=False)
     codes = [c for c in codes if c != "OVS000"]
+    if vision_backend is None and any(REGISTRY[c].kind == "vision" for c in codes):
+        vision_backend = decisions.resolve(
+            settings.vision_model
+        )  # before the render, so a missing key stops the run early
+    ctx = Context(deck, settings, vision_backend=vision_backend)
 
     needs_render = [c for c in codes if REGISTRY[c].kind in ("render", "vision")]
     # A render of a private deck is deleted unless the caller asked to keep it.
@@ -85,6 +91,7 @@ def lint(path: str | Path, settings: Settings, workdir: Path | None = None, visi
 
         for code in codes:
             result.findings += REGISTRY[code].check(ctx)
+        result.notes += ctx.notes
     finally:
         if scratch is not None:
             shutil.rmtree(scratch, ignore_errors=True)

@@ -38,7 +38,7 @@ compares those boxes with the frames in the file.
 
 ```console
 uv tool install overset
-uv tool install "overset[vision]"   # + vision rules
+uv tool install "overset[vision]"   # + vision rules (OVS4xx)
 ```
 
 The render rules need **LibreOffice** and **poppler** on PATH
@@ -85,11 +85,11 @@ Three kinds, by what a rule needs:
 - **structure** reads the `.pptx` alone: offline, milliseconds.
 - **render** measures a LibreOffice render: offline, seconds, and
   deterministic.
-- **vision** asks a model to look at every slide plus a contact sheet of the
-  whole deck: a judgement, reported with a confidence, opt-in. It's for the
-  questions nothing can measure (is this slide cluttered, do three slides in
-  a row look the same). Measured problems are explicitly kept out of its
-  rubric.
+- **vision** asks a multimodal decision model yes/no questions about each slide
+  (and each pair of slides), and reports its probability as the finding's
+  confidence. It's for the questions nothing can measure (is this slide
+  cluttered, do two slides in a row look the same). Opt-in. Measured problems
+  are explicitly kept out of the questions. See [Vision rules](#vision-rules).
 
 ### Rendered as PowerPoint shows it
 
@@ -136,6 +136,33 @@ its boxes by estimate, counting on a shrink that PowerPoint never applied.
 - Decks that embed their fonts render in those
   fonts. For others, `font-dirs` registers font folders with fontconfig.
 
+## Vision rules
+
+The OVS4xx rules use a *decision model*: one that returns a probability per yes/no question
+instead of generated text, so it costs a fraction of a language model and answers fast
+enough to look at every slide. overset sends it one request per slide (OVS401-404), one per
+slide with the contact sheet for reference (OVS406), and one per consecutive pair (OVS405).
+
+```console
+export OPENAI_API_KEY=...
+overset deck.pptx --vision                           # openai:gpt-6-luna, the default
+overset deck.pptx --vision --select OVS405           # ask fewer questions
+```
+
+The model is a `provider:name` spec in `vision-model`. Today the one provider is `openai`, which
+speaks OpenAI's [Decisions API](https://developers.openai.com/api/docs/guides/decisions)
+(`POST /v1/decisions`, public beta, `gpt-6-luna` the only model). `OPENAI_BASE_URL` points it at
+any server that speaks the same protocol. A provider is added by registering a class with a
+`predicates(prompt, questions)` method in `overset/decisions.py`; only add one whose image wire
+format you have checked. pydantic-ai's decision models (Jev, System One), as of 2.53, take text only, so
+they can't look at a slide.
+
+**Thresholds are not tuned to this model.** `vision-threshold` (0.7) is a probability, and a
+model's stated probabilities need not match how often it is right: one published comparison
+of `gpt-6-luna` found its high probabilities well over-confident. Run a deck you know the
+answer to, check which findings are real, and set the threshold for your decks before
+trusting the output. A question the model refuses is counted in the run's notes.
+
 ## Configuration
 
 `overset.toml` (or `.overset.toml`, or `[tool.overset]` in `pyproject.toml`),
@@ -156,9 +183,8 @@ tolerance-pt = 2.0
 render = true
 render-as = "powerpoint"            # or "libreoffice": don't freeze shrink-to-fit
 vision = false
-vision-model = "anthropic:claude-sonnet-5-5"
-vision-threshold = 0.7
-vision-input = "both"               # "slides" | "sheet" | "both"
+vision-model = "openai:gpt-6-luna"       # provider:name, see Vision rules
+vision-threshold = 0.7             # minimum probability to report
 vision-brief = "House style the reviewer should know."
 ```
 
