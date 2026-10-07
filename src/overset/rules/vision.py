@@ -1,27 +1,27 @@
-"""Rules a vision model judges: what a deck looks like, not what it measures.
+"""Rules a decision model judges: what a deck looks like, not what it measures.
 
 Everything a renderer can measure is a render rule. These are the questions
 with no measurement -- is this slide cluttered, does the eye land on the
-point, do three slides in a row look the same -- asked of a model looking at
-the rendered slides and a contact sheet of the whole deck.
+point, do two slides in a row look the same -- put as yes/no questions to a
+multimodal decision model looking at the rendered slides.
 
 A separate reviewer matters even though the author of the deck looked
 at it too: the builder grades its own work, with sunk cost and a crowded
-context. This one sees only the pictures and a rubric.
+context. This one sees only the pictures and a question.
 
-One model call answers every vision rule. Each finding carries the model's
-confidence, and anything under `vision_threshold` is dropped. Opt-in
+Each slide is one request (OVS401-404 together, OVS406 with the contact sheet
+as a reference for the deck), and each consecutive pair of slides another
+(OVS405). The model returns a probability per question, reported as the
+finding's confidence; anything under `vision_threshold` is dropped. Opt-in
 (`--vision`), since it is the one part of overset that is neither offline nor
 deterministic. Needs `pip install overset[vision]` and a provider key.
 """
 
 from __future__ import annotations
 
-import os
-from typing import Literal
+from concurrent.futures import ThreadPoolExecutor
 
-from pydantic import BaseModel, Field
-
+from overset import decisions
 from overset.rules.base import finding, rule
 
 CODES = {
@@ -33,53 +33,66 @@ CODES = {
     "OVS406": ("inconsistent-style", "A slide that does not look like it belongs to this deck"),
 }
 
-INSTRUCTIONS = """You review presentation decks for visual quality, as a strict senior designer.
-You are shown each slide, then a contact sheet of the whole deck. Report only real, specific problems
-from this list, each with the slide number (1-based) it is on and a confidence from 0 to 1:
+# Phrased so a high probability means the problem is present.
+QUESTIONS = {
+    "OVS401": "Is this slide cluttered: do so many elements compete that it has no single focal point?",
+    "OVS402": "Does this slide have a weak hierarchy: does the eye fail to land on its main point first?",
+    "OVS403": "Are elements on this slide visibly misaligned, sitting off a shared edge or grid?",
+    "OVS404": "Is any text on this slide set over a busy part of an image, so that it is hard to read?",
+    "OVS405": "Are these two slides interchangeable: the same layout and visual structure, differing only in content?",
+    "OVS406": "Does the first image, a single slide, look like it does not belong to the deck shown in the second?",
+}
+SLIDE_CODES = ("OVS401", "OVS402", "OVS403", "OVS404")
 
-{rubric}
-
-For OVS405, report the second slide of the pair. Do not report text overflow, font sizes, colours or
-contrast -- those are measured elsewhere. Do not comment on the writing. If the deck is fine, return no
-issues. A false alarm costs the author a rewrite; only report what you would defend."""
-
-
-class Issue(BaseModel):
-    code: Literal["OVS401", "OVS402", "OVS403", "OVS404", "OVS405", "OVS406"]
-    slide: int | None = Field(description="1-based slide number, or null for the whole deck")
-    message: str = Field(description="What is wrong, specifically enough to fix")
-    confidence: float = Field(ge=0, le=1)
-
-
-class Review(BaseModel):
-    issues: list[Issue]
+SCOPE = (
+    "Judge only how the slides look. Do not judge text overflow, font sizes, colours or contrast, which are "
+    "measured elsewhere, and do not judge the writing."
+)
+MAX_WORKERS = 8
 
 
-def instructions(brief: str = "") -> str:
-    rubric = "\n".join(f"- {code} {name}: {summary}" for code, (name, summary) in CODES.items())
-    text = INSTRUCTIONS.format(rubric=rubric)
-    return text + (f"\n\nHouse style for this deck:\n{brief}" if brief else "")
+def preamble(brief: str = "") -> str:
+    return SCOPE + (f"\nHouse style for this deck:\n{brief}" if brief else "")
 
 
-def review(ctx) -> Review:
-    """Run the one vision call for this deck, once, whichever rules ask."""
+def _requests(ctx):
+    """Every request the active rules need: (slide the findings land on, prompt, questions)."""
+    wanted = set(ctx.settings.active_codes())
+    pages, sheet = ctx.render.pages, ctx.render.contact_sheet
+    intro = preamble(ctx.settings.vision_brief)
+
+    def ask(codes):
+        return {c: QUESTIONS[c] for c in codes if c in wanted}
+
+    for page in pages:
+        if questions := ask(SLIDE_CODES):
+            text = f"{intro}\nSlide {page.number} of {len(pages)}:"
+            yield page.number, decisions.Prompt(text, [page.image]), questions
+        if sheet and (questions := ask(["OVS406"])):
+            text = f"{intro}\nThe first image is slide {page.number}; the second is the whole deck:"
+            yield page.number, decisions.Prompt(text, [page.image, sheet]), questions
+    for before, after in zip(pages, pages[1:], strict=False):
+        if questions := ask(["OVS405"]):
+            text = f"{intro}\nSlide {before.number}, then slide {after.number}:"
+            yield after.number, decisions.Prompt(text, [before.image, after.image]), questions
+
+
+def review(ctx) -> dict[str, list[tuple[int, float]]]:
+    """Ask every question of every slide once, whichever rules are active: {code: [(slide, probability)]}."""
     if ctx.cache.get("vision") is None:
-        os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")  # a linter's output is its findings
-        from pydantic_ai import Agent, BinaryContent
-
-        settings = ctx.settings
-        agent = Agent(
-            ctx.vision_model or settings.vision_model,
-            output_type=Review,
-            instructions=instructions(settings.vision_brief),
-        )
-        parts: list = [f"A deck of {len(ctx.render.pages)} slides."]
-        if settings.vision_input in ("slides", "both"):
-            for page in ctx.render.pages:
-                parts += [f"Slide {page.number}:", BinaryContent(page.image.read_bytes(), media_type="image/png")]
-        if settings.vision_input in ("sheet", "both") and ctx.render.contact_sheet:
-            parts += ["The whole deck:", BinaryContent(ctx.render.contact_sheet.read_bytes(), media_type="image/png")]
-        ctx.cache["vision"] = agent.run_sync(parts).output
+        backend = ctx.vision_backend
+        requests = list(_requests(ctx))
+        with ThreadPoolExecutor(MAX_WORKERS) as pool:
+            outcomes = list(pool.map(lambda r: backend.predicates(r[1], r[2]), requests))
+        found: dict[str, list[tuple[int, float]]] = {code: [] for code in CODES}
+        refused = 0
+        for (slide, _, _), answers in zip(requests, outcomes, strict=True):
+            refused += len(answers.refused)
+            for code, p in answers.probabilities.items():
+                found[code].append((slide, p))
+        if refused:
+            ctx.notes.append(f"the decision model refused {refused} vision question(s); those were not judged")
+        ctx.cache["vision"] = found
     return ctx.cache["vision"]
 
 
@@ -87,11 +100,7 @@ def _register(code, name, summary):
     @rule(code, name, summary, "vision", default=False)
     def check(ctx):
         threshold = ctx.settings.vision_threshold
-        return [
-            finding(ctx, code, i.message, i.slide, confidence=i.confidence)
-            for i in review(ctx).issues
-            if i.code == code and i.confidence >= threshold
-        ]
+        return [finding(ctx, code, summary, slide, confidence=p) for slide, p in review(ctx)[code] if p >= threshold]
 
     return check
 

@@ -10,7 +10,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from overset import __version__
+from overset import __version__, decisions
 from overset import settings as settings_mod
 from overset.engine import lint
 from overset.report import render_json, render_text
@@ -108,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         workdir = args.keep_render / path.stem if args.keep_render else None
         try:
             results.append(lint(path, s, workdir=workdir))
+        except decisions.BackendUnavailable as e:
+            print(f"overset: {e}", file=sys.stderr)
+            return 2
         except Exception as e:  # an unreadable deck is a file error, not a finding
             print(f"overset: {raw}: {type(e).__name__}: {e}", file=sys.stderr)
             return 2
