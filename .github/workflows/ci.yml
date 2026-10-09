@@ -8,7 +8,7 @@ on:
 jobs:
   test:
     # Hermetic: the integration tests skip themselves without LibreOffice.
-    runs-on: ubuntu-latest
+    runs-on: nscloud-ubuntu-24.04-amd64-4x8
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -32,7 +32,7 @@ jobs:
   render:
     # The real pipeline -- LibreOffice, pdftotext, pdftoppm -- once. The .debs
     # are cached: the Ubuntu mirror can take minutes for LibreOffice alone.
-    runs-on: ubuntu-latest
+    runs-on: nscloud-ubuntu-24.04-amd64-4x8
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
