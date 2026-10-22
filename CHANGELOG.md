@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Security: bump `certifi` to 2026.10.19, which removes trust in the eMudhra intermediate CAs whose private keys were publicly recoverable (https://emudhra.we-have-a-problem.com/). Lockfile only.
 - The vision rules (OVS4xx) now use a multimodal decision model instead of a language model:
   yes/no questions per slide and per consecutive pair, each answered with a probability. The
   default `vision-model` is `openai:gpt-6-luna` (needs `OPENAI_API_KEY`).
