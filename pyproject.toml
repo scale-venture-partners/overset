@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
   "python-pptx>=1.0",
-  "pillow>=10",
+  "pillow>=13.0.0",
 ]
 
 [project.urls]
