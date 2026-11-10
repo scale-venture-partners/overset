@@ -225,3 +225,26 @@ def test_a_row_of_cards_read_across_the_columns_keeps_each_word_in_its_card(buil
         word("a", 1.7, 4.4, 0.1, 0.25),
     ]
     assert check("OVS002", deck, fake_render([words])) == []
+
+
+def test_soffice_profile_is_an_absolute_file_uri_for_a_relative_workdir(tmp_path, monkeypatch):
+    # A relative --keep-render once produced "file://out/lo-profile", which
+    # LibreOffice reads as host "out"; it hung until the 180s timeout.
+    from overset import render as render_mod
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(render_mod, "find_soffice", lambda: "soffice")
+    calls = []
+
+    def fake_run(cmd, env=None, timeout=180):
+        calls.append(cmd)
+        (tmp_path / "out" / "deck.pdf").write_bytes(b"%PDF")
+
+    monkeypatch.setattr(render_mod, "_run", fake_run)
+    (tmp_path / "out").mkdir()
+    render_mod.to_pdf(tmp_path / "deck.pptx", render_mod.Path("out"))
+
+    (flag,) = [a for a in calls[0] if a.startswith("-env:UserInstallation=")]
+    uri = flag.split("=", 1)[1]
+    assert uri == (tmp_path / "out" / "lo-profile").resolve().as_uri()
+    assert uri.startswith("file:///")

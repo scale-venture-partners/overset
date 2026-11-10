@@ -101,11 +101,14 @@ def to_pdf(pptx: Path, workdir: Path, font_dirs=()) -> Path:
     soffice = find_soffice()
     if soffice is None:
         raise RenderError("LibreOffice (soffice) is not installed")
-    profile = workdir / "lo-profile"  # isolated, so a running LibreOffice doesn't block this one
+    # An isolated profile, so a running LibreOffice doesn't block this one. It
+    # must be an absolute file:/// URI: a relative path would make
+    # "file://out/lo-profile", which reads "out" as a host, and soffice hangs.
+    profile = (workdir / "lo-profile").resolve()
     _run(
         [
             soffice,
-            f"-env:UserInstallation=file://{profile}",
+            f"-env:UserInstallation={profile.as_uri()}",
             "--headless",
             "--convert-to",
             "pdf",
@@ -201,7 +204,7 @@ def render(
     contact_sheet: bool = False,
     as_powerpoint: bool = True,
 ) -> Render:
-    workdir = Path(workdir or tempfile.mkdtemp(prefix="overset-"))
+    workdir = Path(workdir or tempfile.mkdtemp(prefix="overset-")).resolve()
     workdir.mkdir(parents=True, exist_ok=True)
     source = deck.path.resolve()
     if as_powerpoint:

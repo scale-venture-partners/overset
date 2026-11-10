@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         s.extend_select = s.extend_select + _codes(args.extend_select)
         s.render = s.render and not args.no_render
         s.vision = s.vision or args.vision
-        workdir = args.keep_render / path.stem if args.keep_render else None
+        workdir = args.keep_render.resolve() / path.stem if args.keep_render else None
         try:
             results.append(lint(path, s, workdir=workdir))
         except decisions.BackendUnavailable as e:
