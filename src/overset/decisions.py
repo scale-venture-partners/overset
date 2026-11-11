@@ -35,7 +35,8 @@ class DecisionError(RuntimeError):
 
 
 class BackendUnavailable(RuntimeError):
-    """The decision backend cannot be used as configured: an unknown provider or a missing key."""
+    """The decision backend cannot be used as configured: an unknown provider, a missing key, or a
+    model the provider rejects."""
 
 
 @dataclass
@@ -116,10 +117,38 @@ class OpenAIDecisions:
             else:
                 if response.is_success:
                     return response.json()
+                if self._model_rejected(response):
+                    raise BackendUnavailable(
+                        f"Decision model 'openai:{self.model}' was rejected by the API "
+                        f"(HTTP {response.status_code}): {self._error_message(response)}\n"
+                        "  Fix: set vision-model (in overset.toml, or [tool.overset] in pyproject.toml) "
+                        "to a decision model your key can use.\n"
+                        "  Or:  run without --vision."
+                    )
                 if attempt == MAX_RETRIES or not _retryable(response.status_code):
                     raise DecisionError(f"HTTP {response.status_code}: {response.text[:300]}")
             time.sleep(2**attempt * self.backoff)
         raise AssertionError("unreachable")
+
+    @staticmethod
+    def _error(response) -> dict:
+        try:
+            error = response.json().get("error")
+        except ValueError:
+            return {}
+        return error if isinstance(error, dict) else {}
+
+    def _error_message(self, response) -> str:
+        return str(self._error(response).get("message") or response.text[:300])
+
+    def _model_rejected(self, response) -> bool:
+        """The API refused the model id itself -- unknown, or not available to this key -- which no
+        retry or other slide will fix. OpenAI says so with code `model_not_found`, or by naming the
+        `model` parameter of an invalid request."""
+        error = self._error(response)
+        return response.status_code in (400, 403, 404) and (
+            error.get("code") == "model_not_found" or error.get("param") == "model"
+        )
 
     def predicates(self, prompt: Prompt, questions: dict[str, str]) -> Answers:
         data = self._post(self._body(prompt, questions))

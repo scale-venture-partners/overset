@@ -195,3 +195,42 @@ def test_the_scope_keeps_measured_problems_out_of_the_review():
     text = preamble("House.")
     assert "Do not judge text overflow" in text and "House." in text
     assert set(QUESTIONS) == set(CODES)
+
+
+def _api_error(status, code=None, param=None, message="nope"):
+    calls = []
+
+    def server(request):
+        calls.append(request)
+        error = {"message": message, "type": "invalid_request_error", "param": param, "code": code}
+        return httpx.Response(status, json={"error": error})
+
+    return server, calls
+
+
+def test_a_model_the_api_rejects_stops_the_run_with_the_fix(tmp_path):
+    image = tmp_path / "s.png"
+    Image.new("RGB", (10, 10)).save(image)
+    prompt = decisions.Prompt("x", [image])
+    message = "The model `gpt-6-luna` does not exist or you do not have access to it."
+    for status, code, param in ((404, "model_not_found", None), (400, None, "model")):
+        server, calls = _api_error(status, code, param, message)
+        with pytest.raises(decisions.BackendUnavailable) as e:
+            backend(server).predicates(prompt, {"A": "?"})
+        assert "'openai:gpt-6-luna' was rejected" in str(e.value) and message in str(e.value)
+        assert "vision-model" in str(e.value) and "without --vision" in str(e.value)
+        assert len(calls) == 1, "a rejected model is not retried"
+
+
+def test_other_bad_requests_stay_decision_errors(tmp_path):
+    image = tmp_path / "s.png"
+    Image.new("RGB", (10, 10)).save(image)
+    server, _ = _api_error(400, "invalid_value", "questions")
+    with pytest.raises(decisions.DecisionError, match="HTTP 400"):
+        backend(server).predicates(decisions.Prompt("x", [image]), {"A": "?"})
+
+
+def test_a_rejected_model_surfaces_from_a_vision_rule(builder, make_deck, fake_render):
+    server, _ = _api_error(404, "model_not_found")
+    with pytest.raises(decisions.BackendUnavailable, match="rejected"):
+        REGISTRY["OVS401"].check(ctx(make_deck, builder, fake_render, server))

@@ -198,6 +198,32 @@ def text_overflows_frame(ctx):
     return out
 
 
+def colliding_pairs(inks: list[Box], owners: list[str]) -> dict[tuple[str, str], tuple[int, int]]:
+    """Pairs of words from different owners whose ink overlaps by more than 5% of
+    the smaller word: for each pair of owners, the first such pair of word
+    indices (i < j, in reading order).
+
+    Words are swept top to bottom, and each is compared only with the words
+    that start above its bottom edge, so a dense slide costs about n log n
+    comparisons rather than n squared.
+    """
+    order = sorted(range(len(inks)), key=lambda k: inks[k].y)
+    hits: dict[tuple[str, str], tuple[int, int]] = {}
+    for pos, a in enumerate(order):
+        for b in order[pos + 1 :]:
+            if inks[b].y >= inks[a].bottom:
+                break  # this word and every later one start below a's ink
+            if owners[a] == owners[b]:
+                continue
+            overlap = inks[a].intersection(inks[b])
+            if overlap and overlap > 0.05 * min(inks[a].area, inks[b].area):
+                key = tuple(sorted((owners[a], owners[b])))
+                pair = (min(a, b), max(a, b))
+                if key not in hits or pair < hits[key]:
+                    hits[key] = pair
+    return hits
+
+
 @rule(
     "OVS003",
     "text-collision",
@@ -213,17 +239,9 @@ def text_collision(ctx):
         shapes = ctx.deck.slides[page.number - 1].shapes if page.number <= len(ctx.deck.slides) else []
         words = page.words
         owners = [_owner_name(o, w) for o, w in zip(assign_owners(words, shapes, tol), words, strict=True)]
-        inks = [ink(w) for w in words]
-        hits: dict[tuple[str, str], list] = {}
-        for i, a in enumerate(words):
-            for j in range(i + 1, len(words)):
-                if owners[i] == owners[j]:
-                    continue
-                overlap = inks[i].intersection(inks[j])
-                if overlap and overlap > 0.05 * min(inks[i].area, inks[j].area):
-                    key = tuple(sorted((owners[i], owners[j])))
-                    hits.setdefault(key, [a, words[j]])
-        for (x, y), (a, b) in sorted(hits.items()):
+        hits = colliding_pairs([ink(w) for w in words], owners)
+        for (x, y), (i, j) in sorted(hits.items()):
+            a, b = words[i], words[j]
             out.append(
                 finding(
                     ctx,

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `--vision` with a model id the API rejects now stops with a clear message naming the model and the
+  `vision-model` setting (exit 2), instead of a generic `DecisionError: HTTP 404` for the deck.
+- OVS003 sweeps rendered words top to bottom instead of comparing every pair, so dense slides
+  (tables, appendix pages) are checked in a fraction of the time. Findings are unchanged.
 - New rule OVS206 (missing-alt-text): a picture (including video), chart, SmartArt graphic or embedded
   object with no alt text, or alt text that is only a file name (`IMG_1234.jpg`, `Picture 3`, a
   screenshot's default name). Visuals marked decorative in PowerPoint, and the layout's and master's
