@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- OVS104 now uses WCAG 2.2's size-dependent contrast thresholds: `min-contrast` defaults to 4.5
+  (was 3.0) for body text, and the new `min-contrast-large` (3.0) applies to text of 18pt and up,
+  or 14pt bold. Text whose size isn't known is held to 4.5:1. Expect more OVS104 findings on
+  small grey text; set `min-contrast = 3.0` to keep the old behaviour.
 - Rendering as PowerPoint now applies a shrink's line-spacing reduction to paragraphs that don't
   state their own spacing (they get their inherited spacing, or 100%, reduced), and to spacing
   given in points. Before, those lines were drawn at full spacing: false OVS002 on shrunk text.

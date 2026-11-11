@@ -73,6 +73,7 @@ class Run:
     size_pt: float | None  # effective: stated or inherited size times any shrink-on-overflow scale
     font: str | None
     color: str | None  # "RRGGBB", only when stated as RGB
+    bold: bool = False  # only when stated
 
 
 @dataclass
@@ -265,7 +266,7 @@ def _runs(text_frame, chain: list | None = None) -> list[Run]:
                 continue
             stated = run.font.size.pt if run.font.size is not None else inherited
             size = stated * scale if stated is not None else None
-            runs.append(Run(run.text, size, run.font.name, _rgb(run.font.color)))
+            runs.append(Run(run.text, size, run.font.name, _rgb(run.font.color), bool(run.font.bold)))
     return runs
 
 

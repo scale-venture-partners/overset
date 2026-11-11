@@ -270,3 +270,53 @@ def test_text_spilling_out_of_a_frame_inside_a_group_is_an_overflow(builder, mak
     )
     (f,) = check("OVS002", deck, render)
     assert f.message == "text spills out of 'Card > TextBox 2'" and f.snippet == "revenue grew"
+
+
+GREY = (138, 138, 138)  # about 3.4:1 on white: enough for large text, not for body text
+
+
+def _grey_text(builder, make_deck, fake_render, size, bold=False):
+    box = builder.text("Caption", size=size)
+    box.text_frame.paragraphs[0].runs[0].font.bold = bold
+    words = [[word("Caption", 1, 1, 2, 0.5)]]
+    render = fake_render(words, color="white", dpi=60, draw=_paint(GREY, (1.2, 1.1, 0.6, 0.3)))
+    return check("OVS104", make_deck(builder), render)
+
+
+def test_the_grey_sits_between_the_two_wcag_thresholds():
+    ratio = contrast_ratio(GREY, (255, 255, 255))
+    assert 3.0 < ratio < 4.5
+
+
+def test_body_text_needs_4_5_to_1(builder, make_deck, fake_render):
+    (f,) = _grey_text(builder, make_deck, fake_render, size=16)
+    assert f.message.endswith("under 4.5:1") and f.snippet == "Caption"
+
+
+def test_large_text_needs_only_3_to_1(builder, make_deck, fake_render):
+    assert _grey_text(builder, make_deck, fake_render, size=20) == []
+
+
+def test_14pt_bold_is_large_text(builder, make_deck, fake_render):
+    assert _grey_text(builder, make_deck, fake_render, size=14, bold=True) == []
+
+
+def test_14pt_regular_is_body_text(builder, make_deck, fake_render):
+    (f,) = _grey_text(builder, make_deck, fake_render, size=14)
+    assert f.message.endswith("under 4.5:1")
+
+
+def test_text_of_unknown_size_is_held_to_the_body_threshold(builder, make_deck, fake_render):
+    builder.text("Something else")  # no frame owns the rendered word, so its size is unknown
+    words = [[word("Caption", 1, 1, 2, 0.5)]]
+    render = fake_render(words, color="white", dpi=60, draw=_paint(GREY, (1.2, 1.1, 0.6, 0.3)))
+    (f,) = check("OVS104", make_deck(builder), render)
+    assert f.message.endswith("under 4.5:1")
+
+
+def test_the_large_text_threshold_is_configurable(builder, make_deck, fake_render):
+    builder.text("Caption", size=20)
+    words = [[word("Caption", 1, 1, 2, 0.5)]]
+    render = fake_render(words, color="white", dpi=60, draw=_paint(GREY, (1.2, 1.1, 0.6, 0.3)))
+    (f,) = check("OVS104", make_deck(builder), render, Settings(min_contrast_large=4.0))
+    assert f.message.endswith("under 4:1")

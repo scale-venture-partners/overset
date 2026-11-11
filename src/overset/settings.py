@@ -34,7 +34,8 @@ class Settings:
     min_font_pt: float = 10.0
     max_words: int = 90
     tolerance_pt: float = 2.0
-    min_contrast: float = 3.0
+    min_contrast: float = 4.5  # WCAG 2.2 SC 1.4.3: body text
+    min_contrast_large: float = 3.0  # large text: at least 18pt, or 14pt bold
     max_aspect_distortion: float = 0.02
     palette: list[str] = field(default_factory=list)
     palette_tolerance: float = 12.0
