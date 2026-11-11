@@ -27,7 +27,7 @@ def _owners(word, shapes, tol):
         return []
     owners = []
     for shape in shapes:
-        if shape.box is None or shape.kind not in ("text", "table", "group"):
+        if shape.box is None or shape.kind not in ("text", "table"):
             continue
         if token in _norm(shape.text) and word.box.x < shape.box.right + tol and word.box.right > shape.box.x - tol:
             owners.append(shape)
@@ -92,7 +92,7 @@ def assign_owners(words, shapes, tol) -> list:
     seqs = {
         id(s): [_token(t) for t in s.text.split()]
         for s in shapes
-        if s.box is not None and s.kind in ("text", "table", "group") and s.text.strip()
+        if s.box is not None and s.kind in ("text", "table") and s.text.strip()
     }
     by_id = {id(s): s for s in shapes}
     pos = dict.fromkeys(seqs, 0)
@@ -131,7 +131,7 @@ def assign_owners(words, shapes, tol) -> list:
 
 
 def _owner_name(shape, word) -> str:
-    return shape.name if shape is not None else f"block {word.block}"
+    return shape.label if shape is not None else f"block {word.block}"
 
 
 def _by_block(words):
@@ -192,7 +192,7 @@ def text_overflows_frame(ctx):
         for word, owner in zip(page.words, assign_owners(page.words, shapes, tol), strict=True):
             if owner is None or owner.auto_grow or fits(owner.box, word, tol):
                 continue
-            spilled[owner.name].append(word)
+            spilled[owner.label].append(word)
         for name, words in spilled.items():
             out.append(finding(ctx, "OVS002", f"text spills out of '{name}'", page.number, _text(words)))
     return out
@@ -304,19 +304,43 @@ def sample_contrast(image, boxes, dpi) -> float | None:
     "Text too close in tone to what is behind it",
     "render",
     explanation="Sampled from the rendered pixels, so it holds over images, gradients and theme colours "
-    "the file never states as RGB. The threshold is WCAG's 3:1 for large text by default.",
+    "the file never states as RGB. Thresholds follow WCAG 2.2 SC 1.4.3: 4.5:1 for body text, 3:1 for "
+    "large text (at least 18pt, or 14pt bold). A word's size comes from the run it was set in; a word "
+    "whose size is unknown is held to the body-text threshold. On a projector contrast is lower still.",
 )
 def low_contrast(ctx):
     from PIL import Image
 
-    out, floor = [], ctx.settings.min_contrast
+    out, tol = [], ctx.settings.tolerance_emu
     for page in ctx.render.pages:
+        shapes = ctx.deck.slides[page.number - 1].shapes if page.number <= len(ctx.deck.slides) else []
+        large = dict(zip(map(id, page.words), _large_text(page.words, shapes, tol), strict=True))
         with Image.open(page.image) as im:
             image = im.convert("RGB")
-            for words in _by_block(page.words).values():
-                ratio = sample_contrast(image, [w.box for w in words], page.dpi)
-                if ratio is not None and ratio < floor:
-                    out.append(
-                        finding(ctx, "OVS104", f"contrast {ratio:.1f}:1, under {floor:g}:1", page.number, _text(words))
-                    )
+            for block in _by_block(page.words).values():
+                # Large and body text in one block are held to different floors, so sample each on its own.
+                for is_large in (False, True):
+                    words = [w for w in block if large[id(w)] == is_large]
+                    if not words:
+                        continue
+                    floor = ctx.settings.min_contrast_large if is_large else ctx.settings.min_contrast
+                    ratio = sample_contrast(image, [w.box for w in words], page.dpi)
+                    if ratio is not None and ratio < floor:
+                        message = f"contrast {ratio:.1f}:1, under {floor:g}:1"
+                        out.append(finding(ctx, "OVS104", message, page.number, _text(words)))
+    return out
+
+
+LARGE_PT, LARGE_BOLD_PT = 18.0, 14.0  # WCAG's "large scale" text
+
+
+def _large_text(words, shapes, tol) -> list[bool]:
+    """Whether each rendered word is WCAG large text, from the run it belongs to:
+    the word's frame, then the first run in that frame whose text holds it."""
+    out = []
+    for word, owner in zip(words, assign_owners(words, shapes, tol), strict=True):
+        token = _token(word.text)
+        run = next((r for r in owner.runs if token and token in _norm(r.text)), None) if owner else None
+        size = run.size_pt if run is not None else None
+        out.append(size is not None and (size >= LARGE_PT - 0.05 or (run.bold and size >= LARGE_BOLD_PT - 0.05)))
     return out

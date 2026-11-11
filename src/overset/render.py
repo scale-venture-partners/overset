@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from overset.deck import Box, Deck
+from overset.deck import Box, Deck, Styles
 
 SOFFICE_CANDIDATES = ("soffice", "libreoffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice")
 DEFAULT_DPI = 110
@@ -176,19 +176,98 @@ def _freeze_body(body: str) -> str:
             body,
         )
     if reduction:
+        # Line spacing as a percentage or in points (centipoints); spacing
+        # before and after a paragraph is not reduced.
         body = re.sub(
-            r'(<a:lnSpc><a:spcPct val=")(\d+)(")',
+            r'(<a:lnSpc><a:spc(?:Pct|Pts) val=")(\d+)(")',
             lambda r: f"{r.group(1)}{round(int(r.group(2)) * (1 - reduction))}{r.group(3)}",
             body,
         )
     return body
 
 
+def _shrunk(text_frame) -> bool:
+    """PowerPoint stored a shrink for this body: a smaller font, tighter lines, or both."""
+    from pptx.oxml.ns import qn
+
+    norm = text_frame._txBody.bodyPr.find(qn("a:normAutofit"))
+    if norm is None:
+        return False
+    return int(norm.get("fontScale") or 100_000) != 100_000 or int(norm.get("lnSpcReduction") or 0) != 0
+
+
+def _text_shapes(shapes):
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _text_shapes(shape.shapes)
+        elif shape.has_text_frame:
+            yield shape
+
+
+def _inherited_sizes_stated(pptx: Path) -> dict[str, bytes]:
+    """Slide XML in which every shrunk text body states the sizes and line
+    spacing it inherits.
+
+    `_freeze_body` scales the `sz` and `a:lnSpc` it finds. Text that inherits
+    them -- from the layout, the master or the presentation defaults -- has
+    neither, so it would render at 100% while PowerPoint shows it at
+    `fontScale` and `lnSpcReduction`. Writing the inherited values onto each
+    run, end-of-paragraph mark and paragraph first lets the freeze scale them
+    like stated ones; a paragraph that inherits no spacing gets 100%. Returns
+    only the slides that changed, by part name.
+    """
+    import copy
+
+    from lxml import etree
+    from pptx import Presentation
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    prs = Presentation(str(pptx))
+    styles, changed = Styles(prs), {}
+    for slide in prs.slides:
+        master, touched = slide.slide_layout.slide_master, False
+        for shape in _text_shapes(slide.shapes):
+            if not _shrunk(shape.text_frame):
+                continue
+            chain = styles.chain(shape, master)
+            for paragraph in shape.text_frame.paragraphs:
+                p = paragraph._p
+                ppr = p.get_or_add_pPr()
+                if ppr.find(qn("a:lnSpc")) is None:
+                    inherited = Styles.line_spacing(chain, paragraph.level)
+                    if inherited is not None:
+                        spacing = copy.deepcopy(inherited)
+                    else:
+                        spacing = OxmlElement("a:lnSpc")
+                        spacing.append(OxmlElement("a:spcPct"))
+                        spacing[0].set("val", "100000")
+                    ppr.insert(0, spacing)  # lnSpc is the first child of a:pPr
+                    touched = True
+                size = Styles.size(chain, paragraph.level)
+                if size is None:
+                    continue
+                sz = str(round(size * 100))
+                targets = [r.get_or_add_rPr() for r in p.r_lst] + [p.get_or_add_endParaRPr()]
+                for rpr in targets:
+                    if rpr.get("sz") is None:
+                        rpr.set("sz", sz)
+                        touched = True
+        if touched:
+            changed[slide.part.partname.lstrip("/")] = etree.tostring(
+                slide.part._element, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
+    return changed
+
+
 def as_powerpoint_shows_it(pptx: Path, out: Path) -> Path:
     """A copy of the deck whose text sits where PowerPoint would put it."""
+    stated = _inherited_sizes_stated(pptx)
     with zipfile.ZipFile(pptx) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
         for item in src.infolist():
-            data = src.read(item.filename)
+            data = stated.get(item.filename) or src.read(item.filename)
             if re.match(r"ppt/(slides|slideLayouts|slideMasters)/[^/]+\.xml$", item.filename):
                 text = data.decode("utf-8")
                 data = _TX_BODY.sub(lambda b: _freeze_body(b.group(0)), text).encode("utf-8")

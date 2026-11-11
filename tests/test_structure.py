@@ -1,5 +1,8 @@
 """Rules that read only the .pptx."""
 
+from pptx.util import Inches, Pt
+
+from overset.deck import Box
 from overset.engine import Context
 from overset.rules import load_rules
 from overset.rules.base import REGISTRY
@@ -118,3 +121,159 @@ def test_repeated_layouts_are_reported_when_asked_for(builder, make_deck):
     builder.new_slide(layout=5)
     (f,) = check("OVS301", make_deck(builder))
     assert f.slide == 2 and "same layout as slide 1" in f.message
+
+
+def _scale_group(group, factor_x, factor_y, x=None, y=None):
+    """Show a group's children at a different size (and place), as PowerPoint
+    does when a group is resized: off/ext change, chOff/chExt stay."""
+    from pptx.oxml.ns import qn
+
+    xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
+    off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
+    if x is not None:
+        off.set("x", str(int(Inches(x))))
+    if y is not None:
+        off.set("y", str(int(Inches(y))))
+    ext.set("cx", str(round(int(ext.get("cx")) * factor_x)))
+    ext.set("cy", str(round(int(ext.get("cy")) * factor_y)))
+
+
+def test_text_inside_a_group_is_checked_like_any_other(builder, make_deck):
+    card = builder.group()
+    builder.text("Revenue up 40%", size=24, font="Inter", into=card)
+    builder.text("Source: internal data", y=2, size=8, font="Comic Sans MS", color="FF00FF", into=card)
+    card.name = "Card"
+    deck = make_deck(builder)
+    settings = Settings(fonts=["Inter"], palette=["000000"])
+    (small,) = check("OVS101", deck)
+    assert small.message == "text at 8.0pt, under 10pt" and small.snippet == "Source: internal data"
+    (font,) = check("OVS102", deck, settings)
+    assert "Comic Sans MS" in font.message
+    (color,) = check("OVS103", deck, settings)
+    assert "#FF00FF" in color.message
+
+
+def test_a_group_is_flattened_into_its_children_and_its_text_counted_once(builder, make_deck):
+    card = builder.group()
+    builder.text("one two three", into=card)
+    inner = builder.group(into=card)
+    builder.text("four five", y=3, into=inner)
+    card.name = "Card"
+    (slide,) = make_deck(builder).slides
+    assert [s.kind for s in slide.shapes] == ["text", "text"]
+    assert {s.label for s in slide.shapes} == {"Card > TextBox 2", "Card > TextBox 4"}
+    assert slide.words == 5
+
+
+def test_a_picture_inside_a_group_is_checked_for_distortion(builder, make_deck):
+    card = builder.group()
+    builder.picture(size=(400, 200), w=4, h=4, into=card)
+    card.name = "Card"
+    (f,) = check("OVS202", make_deck(builder))
+    assert f.message.startswith("'Card > Picture") and "stretched 50%" in f.message
+
+
+def test_a_resized_group_places_and_scales_its_children(builder, make_deck):
+    card = builder.group()
+    builder.picture(size=(400, 200), x=1, y=1, w=4, h=2, into=card)
+    _scale_group(card, 2, 1, x=0.5, y=0.5)  # stretched to twice the width
+    (pic,) = make_deck(builder).slides[0].shapes
+    assert pic.box == Box(int(Inches(0.5)), int(Inches(0.5)), int(Inches(8)), int(Inches(2)))
+    (f,) = check("OVS202", make_deck(builder))
+    assert "stretched 100%" in f.message, "a 2:1 image shown 4:1"
+
+
+def test_a_group_moved_past_the_edge_takes_its_text_with_it(builder, make_deck):
+    card = builder.group()
+    builder.text("Inside the group", x=1, y=1, w=4, into=card)
+    _scale_group(card, 1, 1, x=11)  # 11in + 4in wide, on a 13.33in slide
+    card.name = "Card"
+    (f,) = check("OVS004", make_deck(builder))
+    assert f.message == "'Card > TextBox 2' extends past the slide edge"
+
+
+def _set_level_size(list_style_parent, level, pt, tag="a:lstStyle"):
+    """State a size for a paragraph level in a list style, creating what's missing."""
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    style = list_style_parent if tag is None else list_style_parent.find(qn(tag))
+    if style is None:
+        style = OxmlElement(tag)
+        # a:lstStyle sits after a:bodyPr in a text body
+        list_style_parent.insert(1, style)
+    lvl = style.find(qn(f"a:lvl{level + 1}pPr"))
+    if lvl is None:
+        lvl = OxmlElement(f"a:lvl{level + 1}pPr")
+        style.append(lvl)
+    rpr = lvl.find(qn("a:defRPr"))
+    if rpr is None:
+        rpr = OxmlElement("a:defRPr")
+        lvl.append(rpr)
+    rpr.set("sz", str(int(pt * 100)))
+
+
+def _body_placeholder_text(builder, text, level=0):
+    slide = builder.new_slide(layout=1)  # Title and Content
+    slide.shapes.title.text = "A title"
+    body = slide.placeholders[1]
+    body.text_frame.text = text
+    body.text_frame.paragraphs[0].level = level
+    return slide, body
+
+
+def test_a_size_inherited_from_the_master_body_style_is_checked(builder, make_deck):
+    # The issue's case: a placeholder inheriting 9pt from the master's bodyStyle, level 2.
+    from pptx.oxml.ns import qn
+
+    _body_placeholder_text(builder, "Second-level point", level=1)
+    master = builder.prs.slide_masters[0]
+    body_style = master._element.find(qn("p:txStyles")).find(qn("p:bodyStyle"))
+    _set_level_size(body_style, 1, 9, tag=None)
+    (f,) = check("OVS101", make_deck(builder))
+    assert f.message == "text at 9.0pt, under 10pt" and f.snippet == "Second-level point"
+
+
+def test_inherited_sizes_resolve_nearest_first(builder, make_deck):
+    slide, body = _body_placeholder_text(builder, "Body text")
+    layout_body = slide.slide_layout.placeholders[1]
+
+    def size():
+        (slide_,) = make_deck(builder).slides
+        (run,) = [r for s in slide_.shapes if s.placeholder == "OBJECT" for r in s.runs]
+        return run.size_pt
+
+    assert size() == 32, "the default master's bodyStyle, level 1"
+    _set_level_size(layout_body.text_frame._txBody, 0, 20)
+    assert size() == 20, "the layout placeholder overrides the master"
+    _set_level_size(body.text_frame._txBody, 0, 8)
+    assert size() == 8, "the shape's own list style overrides the layout"
+    body.text_frame.paragraphs[0].runs[0].font.size = Pt(28)
+    assert size() == 28, "a stated size overrides everything"
+
+
+def test_a_title_inherits_the_title_style_and_a_text_box_the_presentation_default(builder, make_deck):
+    from pptx.oxml.ns import qn
+
+    slide = builder.new_slide(layout=1)
+    slide.shapes.title.text = "A title"
+    box = slide.shapes.add_textbox(Inches(1), Inches(5), Inches(4), Inches(1))
+    box.text_frame.text = "A note"
+    sizes = {s.text: s.runs[0].size_pt for s in make_deck(builder).slides[0].shapes if s.runs}
+    assert sizes == {"A title": 44, "A note": 18}
+    _set_level_size(builder.prs._element.find(qn("p:defaultTextStyle")), 0, 7, tag=None)
+    (f,) = check("OVS101", make_deck(builder))
+    assert f.message == "text at 7.0pt, under 10pt" and f.snippet == "A note"
+
+
+def test_shrink_to_fit_scales_an_inherited_size(builder, make_deck):
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    _, body = _body_placeholder_text(builder, "Shrunk body text")  # inherits 32pt
+    body_pr = body.text_frame._txBody.find(qn("a:bodyPr"))
+    norm = OxmlElement("a:normAutofit")
+    norm.set("fontScale", "25000")
+    body_pr.append(norm)
+    (f,) = check("OVS101", make_deck(builder))
+    assert f.message == "text at 8.0pt, under 10pt"

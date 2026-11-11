@@ -127,6 +127,10 @@ its boxes by estimate, counting on a shrink that PowerPoint never applied.
   the farthest one in tone. That handles digits on a dot smaller than their box
   (paper around the dot is not the ink) and small thin type (whose ink is spread
   over many faint shades).
+- Contrast thresholds follow WCAG 2.2 SC 1.4.3: 4.5:1 for body text and 3:1 for
+  large text (18pt and up, or 14pt bold), taken from the run each word was set
+  in. A word whose size isn't known is held to 4.5:1. A projector lowers
+  contrast further, so treat these as floors.
 - Words are attributed to frames by reading order *and* column: pdftotext reads
   a row of cards line by line across the columns, so a word continues a frame's
   sequence only if it sits in that frame's column.
@@ -178,7 +182,8 @@ palette-tolerance = 12              # RGB distance
 font-dirs = ["fonts/"]              # relative to this file
 min-font-pt = 10
 max-words = 90
-min-contrast = 3.0
+min-contrast = 4.5                 # body text (WCAG 2.2 AA)
+min-contrast-large = 3.0           # 18pt and up, or 14pt bold
 tolerance-pt = 2.0
 render = true
 render-as = "powerpoint"            # or "libreoffice": don't freeze shrink-to-fit
