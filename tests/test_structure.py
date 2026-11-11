@@ -395,3 +395,61 @@ def test_a_picture_inside_a_group_needs_alt_text_and_a_table_does_not(builder, m
     builder.slide.shapes.add_table(2, 2, Inches(1), Inches(4), Inches(4), Inches(1))
     (f,) = check("OVS206", make_deck(builder))
     assert f.message == "picture 'Card > Picture 2' has no alt text"
+
+
+def test_a_table_without_a_header_row_is_reported(builder, make_deck):
+    builder.new_slide()
+    labelled = builder.slide.shapes.add_table(2, 2, Inches(1), Inches(1), Inches(4), Inches(1))
+    bare = builder.slide.shapes.add_table(2, 2, Inches(1), Inches(3), Inches(4), Inches(1))
+    bare.table.first_row = False
+    assert labelled.table.first_row, "python-pptx's tables have a header row by default"
+    (f,) = check("OVS207", make_deck(builder))
+    assert f.message == f"table '{bare.name}' has no header row"
+
+
+def _sections(builder, sections):
+    """Give the deck PowerPoint's sections: [(name, [0-based slide indexes])]."""
+    from lxml import etree
+
+    p, p14 = (
+        "http://schemas.openxmlformats.org/presentationml/2006/main",
+        "http://schemas.microsoft.com/office/powerpoint/2010/main",
+    )
+    ids = [s.get("id") for s in builder.prs._element.sldIdLst]
+    body = "".join(
+        f'<p14:section name="{name}" id="{{00000000-0000-0000-0000-00000000000{n}}}"><p14:sldIdLst>'
+        + "".join(f'<p14:sldId id="{ids[i]}"/>' for i in slides)
+        + "</p14:sldIdLst></p14:section>"
+        for n, (name, slides) in enumerate(sections)
+    )
+    builder.prs._element.append(
+        etree.fromstring(
+            f'<p:extLst xmlns:p="{p}"><p:ext uri="{{521415D9-36F7-43E2-AB2F-B90AF26B5E84}}">'
+            f'<p14:sectionLst xmlns:p14="{p14}">{body}</p14:sectionLst></p:ext></p:extLst>'
+        )
+    )
+
+
+def test_sections_left_with_default_names_are_reported_at_their_first_slide(builder, make_deck):
+    for _ in range(4):
+        builder.new_slide()
+    _sections(
+        builder, [("Default Section", [0, 1]), ("Results", [2]), ("Untitled  section", [3]), ("Untitled Section", [])]
+    )
+    deck = make_deck(builder)
+    assert [(s.name, s.slides) for s in deck.sections][:3] == [
+        ("Default Section", [1, 2]),
+        ("Results", [3]),
+        ("Untitled  section", [4]),
+    ]
+    found = check("OVS208", deck)
+    assert [(f.slide, f.message) for f in found] == [
+        (1, "section 'Default Section' has a default name"),
+        (4, "section 'Untitled section' has a default name"),
+        (None, "section 'Untitled Section' has a default name"),
+    ]
+
+
+def test_a_deck_without_sections_has_nothing_to_name(builder, make_deck):
+    builder.new_slide()
+    assert make_deck(builder).sections == [] and check("OVS208", make_deck(builder)) == []

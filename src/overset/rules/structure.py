@@ -294,6 +294,46 @@ def missing_alt_text(ctx):
 
 
 @rule(
+    "OVS207",
+    "table-without-header",
+    "A table with no header row",
+    "structure",
+    explanation="A screen reader announces a table's header cells as the reader moves through it; without "
+    "a header row the cells are numbers with no labels. Microsoft's Accessibility Checker reports it as an "
+    "error. Checks the table's 'Header Row' option (tblPr firstRow).",
+)
+def table_without_header(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.kind == "table" and not shape.from_layout and shape.header_row is False:
+                out.append(finding(ctx, "OVS207", f"table '{shape.label}' has no header row", slide.number))
+    return out
+
+
+DEFAULT_SECTION_NAMES = {"default section", "untitled section"}
+
+
+@rule(
+    "OVS208",
+    "default-section-name",
+    "A section left with PowerPoint's default name",
+    "structure",
+    explanation="Section names are how a screen-reader user, and anyone in the slide sorter, finds their "
+    "way around a long deck. Microsoft's Accessibility Checker reports 'Default Section' and 'Untitled "
+    "Section' as errors. Reported at the section's first slide.",
+)
+def default_section_name(ctx):
+    out = []
+    for section in ctx.deck.sections:
+        name = " ".join(section.name.split())
+        if name.casefold() in DEFAULT_SECTION_NAMES:
+            first = section.slides[0] if section.slides else None
+            out.append(finding(ctx, "OVS208", f"section '{name}' has a default name", first))
+    return out
+
+
+@rule(
     "OVS301",
     "repeated-layout",
     "Two consecutive slides use the same layout",

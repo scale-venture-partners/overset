@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New rules OVS207 (table-without-header) and OVS208 (default-section-name), two more errors from
+  Microsoft's Accessibility Checker: a table whose "Header Row" option is off, and a section still
+  named "Default Section" or "Untitled Section". Both on by default.
 - `--vision` with a model id the API rejects now stops with a clear message naming the model and the
   `vision-model` setting (exit 2), instead of a generic `DecisionError: HTTP 404` for the deck.
 - OVS003 sweeps rendered words top to bottom instead of comparing every pair, so dense slides

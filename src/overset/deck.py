@@ -93,6 +93,7 @@ class Shape:
     graphic: str | None = None  # a visual that needs alt text: "picture", "chart", "SmartArt graphic", "object"
     alt_text: str = ""  # the shape's description (cNvPr/@descr)
     decorative: bool = False  # marked decorative in PowerPoint, so it needs no alt text
+    header_row: bool | None = None  # tables: the first row is marked as a header row
 
     @property
     def label(self) -> str:
@@ -126,11 +127,18 @@ class Slide:
 
 
 @dataclass
+class Section:
+    name: str
+    slides: list[int]  # 1-based slide numbers, in order
+
+
+@dataclass
 class Deck:
     path: Path
     width: int
     height: int
     slides: list[Slide]
+    sections: list[Section] = field(default_factory=list)
 
     @property
     def frame(self) -> Box:
@@ -345,6 +353,7 @@ def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None 
         out.runs = _runs(shape.text_frame, styles.chain(shape, master) if styles else None)
         out.auto_grow = shape.text_frame.auto_size == MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
     elif kind == "table":
+        out.header_row = bool(shape.table.first_row)
         cells = [c.text_frame for row in shape.table.rows for c in row.cells]
         out.text = "\n".join(c.text for c in cells)
         out.runs = [r for c in cells for r in _runs(c)]
@@ -368,6 +377,19 @@ def _shapes(shapes, from_layout=False, t: Transform = IDENTITY, group: str | Non
     return out
 
 
+_P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+
+
+def _sections(prs) -> list[Section]:
+    """The deck's sections (PowerPoint 2010's p14:sectionLst), with the slides each holds."""
+    number = {sld.get("id"): n for n, sld in enumerate(prs._element.sldIdLst, start=1)}
+    out = []
+    for section in prs._element.iter(f"{{{_P14}}}section"):
+        ids = [s.get("id") for s in section.iter(f"{{{_P14}}}sldId")]
+        out.append(Section(section.get("name") or "", [number[i] for i in ids if i in number]))
+    return out
+
+
 def load(path: str | Path) -> Deck:
     path = Path(path)
     prs = Presentation(str(path))
@@ -381,4 +403,4 @@ def load(path: str | Path) -> Deck:
             shapes += _shapes([s for s in inherited if not s.is_placeholder], from_layout=True, ctx=ctx)
         hidden = slide._element.get("show") in ("0", "false")
         slides.append(Slide(number, slide.slide_layout.name, shapes, hidden))
-    return Deck(path, int(prs.slide_width), int(prs.slide_height), slides)
+    return Deck(path, int(prs.slide_width), int(prs.slide_height), slides, _sections(prs))
