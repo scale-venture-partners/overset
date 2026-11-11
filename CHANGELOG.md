@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- New layout rules from shape boxes, off by default until calibrated: OVS005 (misaligned: shapes whose
+  edges line up with no other shape's within `align-tolerance-pt`, 4), OVS006 (unbalanced-layout: Ngo,
+  Teo & Byrne's balance measure under `min-balance`, 0.05) and OVS007 (crowded-slide: less than
+  `min-whitespace`, 25%, of the slide empty). The thresholds are about the starter corpus's 10th
+  percentile; background pictures don't count as content.
 - New colour rules: OVS108 (too-many-colors, more than `max-colors` = 6 distinct stated text and fill
   colours on a slide), OVS109 (saturated-blue-text) and OVS110 (red-blue-adjacent: red text on blue or
   touching red and blue shapes). On by default.

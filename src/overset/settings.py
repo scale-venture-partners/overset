@@ -46,6 +46,9 @@ class Settings:
     palette_tolerance: float = 12.0  # RGB distance, used unless palette_delta_e is set
     palette_delta_e: float | None = None  # perceptual (CIEDE2000) tolerance for the palette instead
     max_colors: int = 6  # distinct text and fill colours on a slide
+    align_tolerance_pt: float = 4.0  # OVS005: edges this close count as lined up
+    min_balance: float = 0.05  # OVS006 (off by default): Ngo et al.'s balance, 0-1; the corpus's 10th percentile
+    min_whitespace: float = 0.25  # OVS007 (off by default): share left empty; about the corpus's 10th percentile
     fonts: list[str] = field(default_factory=list)
     font_dirs: list[Path] = field(default_factory=list)
     vision_model: str = "openai:gpt-6-luna"

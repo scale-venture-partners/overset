@@ -70,6 +70,9 @@ overset --explain OVS002
 | OVS002 | render | Rendered text spills out of its own frame |
 | OVS003 | render | Text from two frames is drawn on top of each other |
 | OVS004 | structure | A text frame extends past the slide edge |
+| OVS005 | structure | Shapes that line up with nothing else on the slide *(off by default)* |
+| OVS006 | structure | Content weighted heavily to one side of the slide *(off by default)* |
+| OVS007 | structure | Too little empty space on the slide *(off by default)* |
 | OVS101 | structure | Text set below the minimum size (after shrink-to-fit) |
 | OVS102 | structure | A font outside the configured set |
 | OVS103 | structure | A colour outside the configured palette |
@@ -204,6 +207,9 @@ max-bullet-lines = 2                # rendered lines per bullet
 max-bullet-depth = 2                # outline levels a list may use
 max-font-families = 2               # typeface families across the deck
 min-reading-order = 0.0             # Kendall's tau of reading order against layout (-1 to 1)
+align-tolerance-pt = 4              # OVS005: edges this close count as lined up
+min-balance = 0.05                  # OVS006: Ngo et al.'s balance measure, 0-1
+min-whitespace = 0.25               # OVS007: share of the slide left empty
 min-contrast = 4.5                 # body text (WCAG 2.2 AA)
 min-contrast-large = 3.0           # 18pt and up, or 14pt bold
 tolerance-pt = 2.0
