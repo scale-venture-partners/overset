@@ -1,6 +1,8 @@
 """The real pipeline: LibreOffice, pdftotext, pdftoppm. Skipped where they
 aren't installed; CI installs them."""
 
+import re
+
 from conftest import needs_libreoffice
 from overset import cli
 from overset.engine import lint
@@ -61,3 +63,30 @@ def test_the_default_render_is_deleted_after_the_run(builder, tmp_path, monkeypa
     result = lint(builder.save(tmp_path / "deck.pptx"), Settings())
     assert result.rendered
     assert list(scratch.iterdir()) == []
+
+
+@needs_libreoffice
+def test_each_bullet_rule_fires_alone_on_its_own_case(builder, tmp_path):
+    # The issue's acceptance: a 6-bullet list, a 3-line bullet and a 3-level nest
+    # each trigger exactly the intended rule, measured on a real render.
+    from test_structure import _bullets
+
+    _bullets(builder, [(f"Point {i}", 0) for i in range(1, 7)])
+    _bullets(
+        builder,
+        [
+            ("Short point", 0),
+            (
+                "A single bullet that keeps going well past the width of its box, so that it wraps onto "
+                "a second line and then a third line before it finally reaches its end",
+                0,
+            ),
+        ],
+    )
+    _bullets(builder, [("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
+    result = lint(builder.save(tmp_path / "deck.pptx"), Settings(select=("OVS209", "OVS210", "OVS211")))
+    assert sorted((f.slide, f.code) for f in result.findings) == [(1, "OVS209"), (2, "OVS210"), (3, "OVS211")]
+    (long,) = [f for f in result.findings if f.code == "OVS210"]
+    # How many lines it wraps to depends on the fonts installed (4 here, 5 on CI's runner); it is well over 2.
+    lines = int(re.fullmatch(r"a bullet in 'Content Placeholder 2' runs to (\d+) lines, over 2", long.message)[1])
+    assert lines >= 3

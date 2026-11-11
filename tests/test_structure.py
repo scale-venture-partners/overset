@@ -395,3 +395,180 @@ def test_a_picture_inside_a_group_needs_alt_text_and_a_table_does_not(builder, m
     builder.slide.shapes.add_table(2, 2, Inches(1), Inches(4), Inches(4), Inches(1))
     (f,) = check("OVS206", make_deck(builder))
     assert f.message == "picture 'Card > Picture 2' has no alt text"
+
+
+def test_a_table_without_a_header_row_is_reported(builder, make_deck):
+    builder.new_slide()
+    labelled = builder.slide.shapes.add_table(2, 2, Inches(1), Inches(1), Inches(4), Inches(1))
+    bare = builder.slide.shapes.add_table(2, 2, Inches(1), Inches(3), Inches(4), Inches(1))
+    bare.table.first_row = False
+    assert labelled.table.first_row, "python-pptx's tables have a header row by default"
+    (f,) = check("OVS207", make_deck(builder))
+    assert f.message == f"table '{bare.name}' has no header row"
+
+
+def _sections(builder, sections):
+    """Give the deck PowerPoint's sections: [(name, [0-based slide indexes])]."""
+    from lxml import etree
+
+    p, p14 = (
+        "http://schemas.openxmlformats.org/presentationml/2006/main",
+        "http://schemas.microsoft.com/office/powerpoint/2010/main",
+    )
+    ids = [s.get("id") for s in builder.prs._element.sldIdLst]
+    body = "".join(
+        f'<p14:section name="{name}" id="{{00000000-0000-0000-0000-00000000000{n}}}"><p14:sldIdLst>'
+        + "".join(f'<p14:sldId id="{ids[i]}"/>' for i in slides)
+        + "</p14:sldIdLst></p14:section>"
+        for n, (name, slides) in enumerate(sections)
+    )
+    builder.prs._element.append(
+        etree.fromstring(
+            f'<p:extLst xmlns:p="{p}"><p:ext uri="{{521415D9-36F7-43E2-AB2F-B90AF26B5E84}}">'
+            f'<p14:sectionLst xmlns:p14="{p14}">{body}</p14:sectionLst></p:ext></p:extLst>'
+        )
+    )
+
+
+def test_sections_left_with_default_names_are_reported_at_their_first_slide(builder, make_deck):
+    for _ in range(4):
+        builder.new_slide()
+    _sections(
+        builder, [("Default Section", [0, 1]), ("Results", [2]), ("Untitled  section", [3]), ("Untitled Section", [])]
+    )
+    deck = make_deck(builder)
+    assert [(s.name, s.slides) for s in deck.sections][:3] == [
+        ("Default Section", [1, 2]),
+        ("Results", [3]),
+        ("Untitled  section", [4]),
+    ]
+    found = check("OVS208", deck)
+    assert [(f.slide, f.message) for f in found] == [
+        (1, "section 'Default Section' has a default name"),
+        (4, "section 'Untitled section' has a default name"),
+        (None, "section 'Untitled Section' has a default name"),
+    ]
+
+
+def test_a_deck_without_sections_has_nothing_to_name(builder, make_deck):
+    builder.new_slide()
+    assert make_deck(builder).sections == [] and check("OVS208", make_deck(builder)) == []
+
+
+def _bullets(builder, items, layout=1):
+    """A content placeholder (bulleted by the master) holding (text, level) paragraphs."""
+    slide = builder.new_slide(layout=layout)
+    slide.shapes.title.text = f"Slide {len(builder.prs.slides)}"
+    tf = slide.placeholders[1].text_frame
+    for n, (text, level) in enumerate(items):
+        p = tf.paragraphs[0] if n == 0 else tf.add_paragraph()
+        p.text, p.level = text, level
+    return slide.placeholders[1]
+
+
+def test_a_list_of_six_bullets_is_too_many(builder, make_deck):
+    _bullets(builder, [(f"Point {i}", 0) for i in range(1, 7)])
+    (f,) = check("OVS209", make_deck(builder))
+    assert f.message == "6 bullets in one list in 'Content Placeholder 2', over 4" and f.snippet == "Point 1"
+    assert check("OVS211", make_deck(builder)) == []
+
+
+def test_siblings_are_counted_under_their_parent(builder, make_deck):
+    # Four top-level points, each with three sub-points: no list is over four.
+    items = [(t, lvl) for n in range(4) for t, lvl in [(f"Point {n}", 0)] + [(f"Sub {n}.{k}", 1) for k in range(3)]]
+    _bullets(builder, items)
+    assert check("OVS209", make_deck(builder)) == []
+    # A fifth top-level point after the sub-points still joins the first list.
+    _bullets(builder, items + [("Point 5", 0)])
+    (f,) = check("OVS209", make_deck(builder))
+    assert f.slide == 2 and f.message.startswith("5 bullets")
+
+
+def test_paragraphs_without_bullets_are_not_a_list(builder, make_deck):
+    from pptx.oxml.ns import qn
+
+    builder.text("\n".join(f"Line {i}" for i in range(8)), h=4)  # a text box: no bullets
+    body = _bullets(builder, [(f"Point {i}", 0) for i in range(6)])
+    for p in body.text_frame.paragraphs:  # bullets switched off in a placeholder
+        p._p.get_or_add_pPr().append(p._p.makeelement(qn("a:buNone"), {}))
+    assert check("OVS209", make_deck(builder)) == []
+
+
+def test_bullets_stated_in_a_text_box_count(builder, make_deck):
+    from pptx.oxml.ns import qn
+
+    box = builder.text("\n".join(f"Item {i}" for i in range(5)), h=4)
+    for p in box.text_frame.paragraphs:
+        p._p.get_or_add_pPr().append(p._p.makeelement(qn("a:buChar"), {"char": "•"}))
+    (f,) = check("OVS209", make_deck(builder))
+    assert f.message.startswith("5 bullets in one list in 'TextBox 1'")
+
+
+def test_a_three_level_nest_is_too_deep(builder, make_deck):
+    _bullets(builder, [("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
+    (f,) = check("OVS211", make_deck(builder))
+    assert f.message == "bullets nested 3 levels deep in 'Content Placeholder 2', over 2"
+    assert f.snippet == "Sub-sub-point"
+    assert check("OVS209", make_deck(builder)) == []
+    assert check("OVS211", make_deck(builder), Settings(max_bullet_depth=3)) == []
+
+
+def test_weights_and_styles_belong_to_one_family():
+    from overset.rules.structure import font_family
+
+    assert {font_family(f) for f in ("Inter", "Inter SemiBold", "Inter-Bold", "Inter Light Italic")} == {"Inter"}
+    assert font_family("Segoe UI Light") == "Segoe UI"
+    assert font_family("Source Sans Pro") == "Source Sans Pro"
+    assert font_family("Fira-Code") == "Fira-Code", "a hyphen before a non-style word is part of the name"
+
+
+def test_too_many_font_families_in_a_deck(builder, make_deck):
+    builder.text("Inherits the theme's body font")  # Calibri, from the theme
+    builder.text("A display face", y=2, font="Georgia")
+    builder.text("Bold weight of the same display face", y=3, font="Georgia Bold")
+    builder.text("✓", y=4, font="Wingdings")  # a symbol font is not a typeface choice
+    assert check("OVS105", make_deck(builder)) == []
+    builder.new_slide()
+    builder.text("A third family", font="Inter")
+    (f,) = check("OVS105", make_deck(builder))
+    assert f.slide is None
+    assert f.message == "3 font families in the deck, over 2: Calibri (slide 1), Georgia (slide 1), Inter (slide 2)"
+    assert check("OVS105", make_deck(builder), Settings(max_font_families=3)) == []
+
+
+def test_a_whole_paragraph_in_bold_italic_or_capitals_is_overused_emphasis(builder, make_deck):
+    bold = builder.text("Every word of this sentence is bold")
+    bold.text_frame.paragraphs[0].runs[0].font.bold = True
+    builder.text("THIS SENTENCE IS TYPED IN CAPITALS", y=2)
+    caps = builder.text("This one uses the all caps option", y=3)
+    caps.text_frame.paragraphs[0].runs[0]._r.get_or_add_rPr().set("cap", "all")
+    found = check("OVS106", make_deck(builder))
+    assert [f.message for f in found] == [
+        "a whole paragraph in bold in 'TextBox 1'",
+        "a whole paragraph in all caps in 'TextBox 2'",
+        "a whole paragraph in all caps in 'TextBox 3'",
+    ]
+
+
+def test_labels_titles_and_partial_emphasis_are_fine(builder, make_deck):
+    slide = builder.new_slide(layout=1)
+    slide.shapes.title.text = "QUARTERLY RESULTS FOR THE BOARD"  # a title may be set in capitals
+    builder.text("NEW PRODUCT", y=5)  # a short label
+    mixed = builder.text("Only one word here is bold", y=6)
+    p = mixed.text_frame.paragraphs[0]
+    p.runs[0].text = "Only one "
+    extra = p.add_run()
+    extra.text, extra.font.bold = "word", True
+    p.add_run().text = " here is bold"
+    assert check("OVS106", make_deck(builder)) == []
+
+
+def test_underlined_text_that_is_not_a_link_is_reported(builder, make_deck):
+    plain = builder.text("Underlined for emphasis")
+    plain.text_frame.paragraphs[0].runs[0].font.underline = True
+    link = builder.text("Our website", y=2)
+    run = link.text_frame.paragraphs[0].runs[0]
+    run.font.underline = True
+    run.hyperlink.address = "https://example.com"
+    (f,) = check("OVS107", make_deck(builder))
+    assert f.message == "underlined text in 'TextBox 1' that is not a link" and f.snippet == "Underlined for emphasis"

@@ -348,3 +348,21 @@ def test_the_collision_sweep_finds_exactly_what_comparing_every_pair_finds():
         inks = [Box(rng.randint(0, 40), rng.randint(0, 40), rng.randint(1, 15), rng.randint(1, 8)) for _ in range(n)]
         owners = [rng.choice("ABCD") for _ in range(n)]
         assert colliding_pairs(inks, owners) == _all_pairs(inks, owners)
+
+
+def test_a_bullet_rendered_on_three_lines_is_too_long(builder, make_deck, fake_render):
+    from test_structure import _bullets
+
+    _bullets(builder, [("Revenue grew in every region this year", 0), ("Churn fell", 0)])
+    deck = make_deck(builder)
+    # The first bullet wraps onto three lines, the second fits on one.
+    words = [
+        word("Revenue", 1, 2.0, 1.2, 0.4), word("grew", 2.3, 2.0, 0.6, 0.4),
+        word("in", 1, 2.5, 0.3, 0.4), word("every", 1.4, 2.5, 0.8, 0.4),
+        word("region", 1, 3.0, 1.0, 0.4), word("this", 2.1, 3.0, 0.6, 0.4), word("year", 2.8, 3.0, 0.6, 0.4),
+        word("Churn", 1, 3.6, 0.9, 0.4), word("fell", 2.0, 3.6, 0.6, 0.4),
+    ]  # fmt: skip
+    (f,) = check("OVS210", deck, fake_render([words]))
+    assert f.message == "a bullet in 'Content Placeholder 2' runs to 3 lines, over 2"
+    assert f.snippet == "Revenue grew in every region this year"
+    assert check("OVS210", deck, fake_render([words]), Settings(max_bullet_lines=3)) == []

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- New typography rules, from Kosslyn et al. (2012): OVS105 (too-many-font-families, more than
+  `max-font-families` = 2 families across the deck, counting inherited and theme fonts, with weights of
+  one family counted once), OVS106 (emphasis-overuse, a whole paragraph of four or more words in bold,
+  italic or capitals, outside titles) and OVS107 (underline-not-link). On by default.
+- New rules for bullet structure, from the most-violated measurable rules in Kosslyn et al. (2012):
+  OVS209 (too-many-bullets, more than `max-bullets` = 4 items at one level of one list), OVS210
+  (long-bullet, a render rule: a bullet on more than `max-bullet-lines` = 2 rendered lines) and OVS211
+  (bullet-depth, nested more than `max-bullet-depth` = 2 levels). A paragraph is a bullet when it shows
+  a bullet or number, stated or inherited from the layout. On by default; OVS203's word count stays as
+  a coarse backstop.
+- New rules OVS207 (table-without-header) and OVS208 (default-section-name), two more errors from
+  Microsoft's Accessibility Checker: a table whose "Header Row" option is off, and a section still
+  named "Default Section" or "Untitled Section". Both on by default.
 - `--vision` with a model id the API rejects now stops with a clear message naming the model and the
   `vision-model` setting (exit 2), instead of a generic `DecisionError: HTTP 404` for the deck.
 - OVS003 sweeps rendered words top to bottom instead of comparing every pair, so dense slides

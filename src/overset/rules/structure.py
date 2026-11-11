@@ -148,6 +148,101 @@ def off_palette_color(ctx):
     return out
 
 
+_STYLE_WORDS = {
+    "thin", "hairline", "extralight", "ultralight", "light", "regular", "book", "normal", "roman", "medium",
+    "semibold", "demibold", "bold", "extrabold", "ultrabold", "black", "heavy", "italic", "oblique",
+    "condensed", "narrow", "semi", "demi", "extra", "ultra",
+}  # fmt: skip
+# Symbol and icon fonts set single glyphs, not text: they are not a typeface choice.
+_SYMBOL_FONTS = {"symbol", "wingdings", "wingdings 2", "wingdings 3", "webdings", "marlett",
+                 "segoe ui symbol", "segoe ui emoji", "apple color emoji", "noto color emoji"}  # fmt: skip
+
+
+def font_family(face: str) -> str:
+    """'Inter SemiBold', 'Inter-Bold' and 'Inter' are one family: weights and styles are not."""
+    base, _, style = face.partition("-")
+    if style and all(w.lower() in _STYLE_WORDS for w in re.findall(r"[A-Z]?[a-z]+", style) or [style]):
+        face = base
+    words = face.split()
+    while len(words) > 1 and words[-1].lower() in _STYLE_WORDS:
+        words.pop()
+    return " ".join(words)
+
+
+@rule(
+    "OVS105",
+    "too-many-font-families",
+    "More typeface families in the deck than a consistent design uses",
+    "structure",
+    explanation="Counts the families text is actually set in -- stated, inherited from the layout, and the "
+    "theme's heading and body fonts -- with weights and styles of one family counted once. Kosslyn et al. "
+    "(2012) found fonts mixed arbitrarily in 37% of sampled decks. Symbol fonts are not counted. Unlike "
+    "OVS102 it needs no brand font set. Limit: `max-font-families` (default 2).",
+)
+def too_many_font_families(ctx):
+    first: dict[str, int] = {}
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            for r in shape.runs:
+                if r.face and r.face.lower() not in _SYMBOL_FONTS:
+                    first.setdefault(font_family(r.face), slide.number)
+    limit = ctx.settings.max_font_families
+    if len(first) <= limit:
+        return []
+    names = ", ".join(f"{f} (slide {n})" for f, n in sorted(first.items(), key=lambda kv: kv[1]))
+    return [finding(ctx, "OVS105", f"{len(first)} font families in the deck, over {limit}: {names}", None)]
+
+
+LABEL_WORDS = 4  # a paragraph shorter than this is a label, where caps or bold are a style choice
+
+
+@rule(
+    "OVS106",
+    "emphasis-overuse",
+    "A whole paragraph set in bold, italic or capitals",
+    "structure",
+    explanation="Emphasis works by contrast; a paragraph that is all bold, all italic or all capitals has "
+    "nothing to stand out from, and capitals read slower. Kosslyn et al. (2012) found it in 81% of sampled "
+    "decks. Paragraphs under four words (labels) and slide titles are exempt. Only stated bold and italic "
+    "count; capitals are the All Caps option or text typed in capitals. Reported once per text frame.",
+)
+def emphasis_overuse(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout or shape.placeholder in TITLE_PLACEHOLDERS:
+                continue
+            hit = next((p for p in shape.paragraphs if p.emphasis and len(p.text.split()) >= LABEL_WORDS), None)
+            if hit:
+                kinds = " and ".join(hit.emphasis)
+                message = f"a whole paragraph in {kinds} in '{shape.label}'"
+                out.append(finding(ctx, "OVS106", message, slide.number, clip(hit.text)))
+    return out
+
+
+@rule(
+    "OVS107",
+    "underline-not-link",
+    "Underlined text that is not a link",
+    "structure",
+    explanation="On a slide, underlining reads as a link; Kosslyn et al. (2012) found underlined non-links in "
+    "46% of sampled decks. A run with a hyperlink or a click action is a link. Reported once per text frame.",
+)
+def underline_not_link(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            hit = next((r for r in shape.runs if r.underline and not r.link and r.text.strip()), None)
+            if hit:
+                message = f"underlined text in '{shape.label}' that is not a link"
+                out.append(finding(ctx, "OVS107", message, slide.number, clip(hit.text)))
+    return out
+
+
 @rule(
     "OVS201",
     "empty-placeholder",
@@ -290,6 +385,106 @@ def missing_alt_text(ctx):
             else:
                 continue
             out.append(finding(ctx, "OVS206", message, slide.number, clip(alt)))
+    return out
+
+
+@rule(
+    "OVS207",
+    "table-without-header",
+    "A table with no header row",
+    "structure",
+    explanation="A screen reader announces a table's header cells as the reader moves through it; without "
+    "a header row the cells are numbers with no labels. Microsoft's Accessibility Checker reports it as an "
+    "error. Checks the table's 'Header Row' option (tblPr firstRow).",
+)
+def table_without_header(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.kind == "table" and not shape.from_layout and shape.header_row is False:
+                out.append(finding(ctx, "OVS207", f"table '{shape.label}' has no header row", slide.number))
+    return out
+
+
+DEFAULT_SECTION_NAMES = {"default section", "untitled section"}
+
+
+@rule(
+    "OVS208",
+    "default-section-name",
+    "A section left with PowerPoint's default name",
+    "structure",
+    explanation="Section names are how a screen-reader user, and anyone in the slide sorter, finds their "
+    "way around a long deck. Microsoft's Accessibility Checker reports 'Default Section' and 'Untitled "
+    "Section' as errors. Reported at the section's first slide.",
+)
+def default_section_name(ctx):
+    out = []
+    for section in ctx.deck.sections:
+        name = " ".join(section.name.split())
+        if name.casefold() in DEFAULT_SECTION_NAMES:
+            first = section.slides[0] if section.slides else None
+            out.append(finding(ctx, "OVS208", f"section '{name}' has a default name", first))
+    return out
+
+
+def _lists(paragraphs):
+    """Each run of sibling bullets -- items at one level under one parent -- as
+    (level, items). A paragraph without a bullet ends every open list; a return to
+    a shallower level ends the deeper ones."""
+    open_lists: dict[int, list] = {}
+    for p in paragraphs:
+        if not p.bulleted:
+            yield from ((lvl, items) for lvl, items in sorted(open_lists.items()))
+            open_lists = {}
+            continue
+        for deeper in sorted(lvl for lvl in open_lists if lvl > p.level):
+            yield deeper, open_lists.pop(deeper)
+        open_lists.setdefault(p.level, []).append(p)
+    yield from ((lvl, items) for lvl, items in sorted(open_lists.items()))
+
+
+@rule(
+    "OVS209",
+    "too-many-bullets",
+    "A list with more items than an audience will hold",
+    "structure",
+    explanation="Counts sibling bullets: items at one level under one parent. Kosslyn et al. (2012) found "
+    "lists of more than four items in 91% of 140 sampled decks. Paragraphs count as bullets when they show "
+    "a bullet or a number, stated or inherited from the layout. Limit: `max-bullets` (default 4).",
+)
+def too_many_bullets(ctx):
+    out, limit = [], ctx.settings.max_bullets
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            for _, items in _lists(shape.paragraphs):
+                if len(items) > limit:
+                    message = f"{len(items)} bullets in one list in '{shape.label}', over {limit}"
+                    out.append(finding(ctx, "OVS209", message, slide.number, clip(items[0].text)))
+    return out
+
+
+@rule(
+    "OVS211",
+    "bullet-depth",
+    "Bullets nested deeper than an audience can follow",
+    "structure",
+    explanation="Kosslyn et al. (2012) found lists nested past a shallow hierarchy in 86% of sampled decks. "
+    "Reported once per text frame, at its deepest bullet. Limit: `max-bullet-depth` levels (default 2).",
+)
+def bullet_depth(ctx):
+    out, limit = [], ctx.settings.max_bullet_depth
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            deep = [p for p in shape.paragraphs if p.bulleted and p.level + 1 > limit]
+            if deep:
+                deepest = max(deep, key=lambda p: p.level)
+                message = f"bullets nested {deepest.level + 1} levels deep in '{shape.label}', over {limit}"
+                out.append(finding(ctx, "OVS211", message, slide.number, clip(deepest.text)))
     return out
 
 

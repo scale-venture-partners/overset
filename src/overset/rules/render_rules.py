@@ -316,6 +316,62 @@ def sample_contrast(image, boxes, dpi) -> float | None:
     return max(contrast_ratio(background, c) for c in candidates)
 
 
+def _paragraph_of(words, shape) -> list[int | None]:
+    """Which of the shape's paragraphs each of its rendered words belongs to, by
+    following the paragraphs' text in reading order."""
+    flat = [(i, _token(t)) for i, p in enumerate(shape.paragraphs) for t in p.text.split()]
+    out, k = [], 0
+    for w in words:
+        token, found = _token(w.text), None
+        for j in range(k, min(k + LOOKAHEAD + 1, len(flat))):
+            if flat[j][1] == token:
+                found, k = flat[j][0], j + 1
+                break
+        out.append(found)
+    return out
+
+
+def _line_count(words) -> int:
+    """Rendered lines among a paragraph's words: centres more than half a word's
+    height apart start a new line."""
+    centres = sorted(w.box.y + w.box.h / 2 for w in words)
+    if not centres:
+        return 0
+    height = sorted(w.box.h for w in words)[len(words) // 2]
+    return 1 + sum(1 for a, b in zip(centres, centres[1:], strict=False) if b - a > height / 2)
+
+
+@rule(
+    "OVS210",
+    "long-bullet",
+    "A bullet that runs to more lines than an audience will read",
+    "render",
+    explanation="Counts the lines a bullet paragraph renders on. Kosslyn et al. (2012) found bullets of "
+    "more than two lines in 91% of 140 sampled decks. Limit: `max-bullet-lines` (default 2).",
+)
+def long_bullet(ctx):
+    out, tol, limit = [], ctx.settings.tolerance_emu, ctx.settings.max_bullet_lines
+    for page in ctx.render.pages:
+        shapes = ctx.deck.slides[page.number - 1].shapes if page.number <= len(ctx.deck.slides) else []
+        owned = defaultdict(list)
+        for word, owner in zip(page.words, assign_owners(page.words, shapes, tol), strict=True):
+            if owner is not None and not owner.from_layout and any(p.bulleted for p in owner.paragraphs):
+                owned[id(owner)].append((owner, word))
+        for pairs in owned.values():
+            shape, words = pairs[0][0], [w for _, w in pairs]
+            by_paragraph = defaultdict(list)
+            for word, index in zip(words, _paragraph_of(words, shape), strict=True):
+                if index is not None:
+                    by_paragraph[index].append(word)
+            for index, ws in sorted(by_paragraph.items()):
+                paragraph = shape.paragraphs[index]
+                lines = _line_count(ws)
+                if paragraph.bulleted and lines > limit:
+                    message = f"a bullet in '{shape.label}' runs to {lines} lines, over {limit}"
+                    out.append(finding(ctx, "OVS210", message, page.number, clip(paragraph.text)))
+    return out
+
+
 @rule(
     "OVS104",
     "low-contrast",

@@ -22,10 +22,12 @@ import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from lxml import etree
 from pptx import Presentation
 from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
 
 EMU_PER_PT = 12_700
@@ -68,12 +70,24 @@ class Box:
 
 
 @dataclass
+class Paragraph:
+    text: str
+    level: int  # 0-based outline level
+    bulleted: bool  # shows a bullet or a number, stated or inherited
+    emphasis: tuple[str, ...] = ()  # "bold", "italic", "all caps": set on every run of the paragraph
+
+
+@dataclass
 class Run:
     text: str
     size_pt: float | None  # effective: stated or inherited size times any shrink-on-overflow scale
     font: str | None
     color: str | None  # "RRGGBB", only when stated as RGB
     bold: bool = False  # only when stated
+    italic: bool = False  # only when stated
+    underline: bool = False  # only when stated
+    link: bool = False  # a hyperlink or click action
+    face: str | None = None  # the font actually used: stated or inherited, theme fonts resolved
 
 
 @dataclass
@@ -93,6 +107,8 @@ class Shape:
     graphic: str | None = None  # a visual that needs alt text: "picture", "chart", "SmartArt graphic", "object"
     alt_text: str = ""  # the shape's description (cNvPr/@descr)
     decorative: bool = False  # marked decorative in PowerPoint, so it needs no alt text
+    header_row: bool | None = None  # tables: the first row is marked as a header row
+    paragraphs: list[Paragraph] = field(default_factory=list)  # text frames, non-empty paragraphs only
 
     @property
     def label(self) -> str:
@@ -126,11 +142,18 @@ class Slide:
 
 
 @dataclass
+class Section:
+    name: str
+    slides: list[int]  # 1-based slide numbers, in order
+
+
+@dataclass
 class Deck:
     path: Path
     width: int
     height: int
     slides: list[Slide]
+    sections: list[Section] = field(default_factory=list)
 
     @property
     def frame(self) -> Box:
@@ -221,6 +244,34 @@ class Styles:
 
     def __init__(self, prs):
         self.default = prs._element.find(qn("p:defaultTextStyle"))
+        self._themes: dict[int, dict[str, str]] = {}
+
+    def theme_fonts(self, master) -> dict[str, str]:
+        """The master's theme fonts: '+mj-lt' (headings) and '+mn-lt' (body) to their typefaces."""
+        if master is None:
+            return {}
+        if id(master) not in self._themes:
+            fonts = {}
+            try:
+                theme = etree.fromstring(master.part.part_related_by(RT.THEME).blob)
+                for key, tag in (("+mj-lt", "a:majorFont"), ("+mn-lt", "a:minorFont")):
+                    latin = theme.find(f".//{qn('a:fontScheme')}/{qn(tag)}/{qn('a:latin')}")
+                    if latin is not None and latin.get("typeface"):
+                        fonts[key] = latin.get("typeface")
+            except (KeyError, ValueError, etree.XMLSyntaxError):
+                pass
+            self._themes[id(master)] = fonts
+        return self._themes[id(master)]
+
+    @staticmethod
+    def font(chain: list, level: int) -> str | None:
+        """The Latin typeface a paragraph level inherits, as written (it may be a theme font)."""
+        for list_style in chain:
+            lvl = list_style.find(qn(f"a:lvl{level + 1}pPr")) if list_style is not None else None
+            latin = lvl.find(f"{qn('a:defRPr')}/{qn('a:latin')}") if lvl is not None else None
+            if latin is not None and latin.get("typeface"):
+                return latin.get("typeface")
+        return None
 
     def chain(self, shape, master) -> list:
         """The list styles to consult, nearest first."""
@@ -250,6 +301,21 @@ class Styles:
         return [*styles, self.default]
 
     @staticmethod
+    def bulleted(chain: list, level: int) -> bool:
+        """Whether a paragraph level shows a bullet or a number by inheritance: the
+        nearest list style that says either way decides."""
+        for list_style in chain:
+            lvl = list_style.find(qn(f"a:lvl{level + 1}pPr")) if list_style is not None else None
+            if lvl is None:
+                continue
+            for child in lvl:
+                if child.tag == qn("a:buNone"):
+                    return False
+                if child.tag in _BULLET_TAGS:
+                    return True
+        return False
+
+    @staticmethod
     def line_spacing(chain: list, level: int):
         """The `a:lnSpc` element a paragraph level inherits, or None (100%)."""
         for list_style in chain:
@@ -268,17 +334,77 @@ class Styles:
         return None
 
 
-def _runs(text_frame, chain: list | None = None) -> list[Run]:
+_BULLET_TAGS = {qn("a:buChar"), qn("a:buAutoNum"), qn("a:buBlip")}
+
+
+def _caps(run) -> bool:
+    rpr = run._r.rPr
+    return rpr is not None and rpr.get("cap") == "all"
+
+
+def _emphasis(paragraph, text: str) -> tuple[str, ...]:
+    """The emphasis every run of a paragraph shares. All caps is the `cap="all"`
+    option, or text typed in capitals."""
+    runs = [r for r in paragraph.runs if r.text.strip()]
+    out = []
+    if runs and all(r.font.bold for r in runs):
+        out.append("bold")
+    if runs and all(r.font.italic for r in runs):
+        out.append("italic")
+    letters = [c for c in text if c.isalpha()]
+    if runs and (all(_caps(r) for r in runs) or (len(letters) > 1 and all(c.isupper() for c in letters))):
+        out.append("all caps")
+    return tuple(out)
+
+
+def _paragraphs(text_frame, chain: list | None) -> list[Paragraph]:
+    out = []
+    for paragraph in text_frame.paragraphs:
+        text = "".join(r.text for r in paragraph.runs)
+        if not text.strip():
+            continue
+        level = paragraph.level
+        stated = paragraph._p.pPr
+        bullet = None
+        if stated is not None:
+            for child in stated:
+                if child.tag == qn("a:buNone"):
+                    bullet = False
+                elif child.tag in _BULLET_TAGS:
+                    bullet = True
+        if bullet is None:
+            bullet = Styles.bulleted(chain, level) if chain else False
+        out.append(Paragraph(text, level, bullet, _emphasis(paragraph, text)))
+    return out
+
+
+def _runs(text_frame, chain: list | None = None, theme: dict | None = None) -> list[Run]:
     scale = _font_scale(text_frame)
+    theme = theme or {}
     runs = []
     for paragraph in text_frame.paragraphs:
         inherited = Styles.size(chain, paragraph.level) if chain else None
+        inherited_font = (Styles.font(chain, paragraph.level) if chain else None) or "+mn-lt"
         for run in paragraph.runs:
             if not run.text.strip():
                 continue
             stated = run.font.size.pt if run.font.size is not None else inherited
             size = stated * scale if stated is not None else None
-            runs.append(Run(run.text, size, run.font.name, _rgb(run.font.color), bool(run.font.bold)))
+            written = run.font.name or inherited_font
+            rpr = run._r.rPr
+            runs.append(
+                Run(
+                    run.text,
+                    size,
+                    run.font.name,
+                    _rgb(run.font.color),
+                    bool(run.font.bold),
+                    italic=bool(run.font.italic),
+                    underline=bool(run.font.underline),
+                    link=rpr is not None and rpr.find(qn("a:hlinkClick")) is not None,
+                    face=theme.get(written[:6], None) if written.startswith("+") else written,
+                )
+            )
     return runs
 
 
@@ -342,9 +468,12 @@ def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None 
     if shape.has_text_frame:
         out.text = shape.text_frame.text
         styles, master = ctx or (None, None)
-        out.runs = _runs(shape.text_frame, styles.chain(shape, master) if styles else None)
+        chain = styles.chain(shape, master) if styles else None
+        out.runs = _runs(shape.text_frame, chain, styles.theme_fonts(master) if styles else None)
+        out.paragraphs = _paragraphs(shape.text_frame, chain)
         out.auto_grow = shape.text_frame.auto_size == MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
     elif kind == "table":
+        out.header_row = bool(shape.table.first_row)
         cells = [c.text_frame for row in shape.table.rows for c in row.cells]
         out.text = "\n".join(c.text for c in cells)
         out.runs = [r for c in cells for r in _runs(c)]
@@ -368,6 +497,19 @@ def _shapes(shapes, from_layout=False, t: Transform = IDENTITY, group: str | Non
     return out
 
 
+_P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
+
+
+def _sections(prs) -> list[Section]:
+    """The deck's sections (PowerPoint 2010's p14:sectionLst), with the slides each holds."""
+    number = {sld.get("id"): n for n, sld in enumerate(prs._element.sldIdLst, start=1)}
+    out = []
+    for section in prs._element.iter(f"{{{_P14}}}section"):
+        ids = [s.get("id") for s in section.iter(f"{{{_P14}}}sldId")]
+        out.append(Section(section.get("name") or "", [number[i] for i in ids if i in number]))
+    return out
+
+
 def load(path: str | Path) -> Deck:
     path = Path(path)
     prs = Presentation(str(path))
@@ -381,4 +523,4 @@ def load(path: str | Path) -> Deck:
             shapes += _shapes([s for s in inherited if not s.is_placeholder], from_layout=True, ctx=ctx)
         hidden = slide._element.get("show") in ("0", "false")
         slides.append(Slide(number, slide.slide_layout.name, shapes, hidden))
-    return Deck(path, int(prs.slide_width), int(prs.slide_height), slides)
+    return Deck(path, int(prs.slide_width), int(prs.slide_height), slides, _sections(prs))
