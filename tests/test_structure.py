@@ -453,3 +453,61 @@ def test_sections_left_with_default_names_are_reported_at_their_first_slide(buil
 def test_a_deck_without_sections_has_nothing_to_name(builder, make_deck):
     builder.new_slide()
     assert make_deck(builder).sections == [] and check("OVS208", make_deck(builder)) == []
+
+
+def _bullets(builder, items, layout=1):
+    """A content placeholder (bulleted by the master) holding (text, level) paragraphs."""
+    slide = builder.new_slide(layout=layout)
+    slide.shapes.title.text = f"Slide {len(builder.prs.slides)}"
+    tf = slide.placeholders[1].text_frame
+    for n, (text, level) in enumerate(items):
+        p = tf.paragraphs[0] if n == 0 else tf.add_paragraph()
+        p.text, p.level = text, level
+    return slide.placeholders[1]
+
+
+def test_a_list_of_six_bullets_is_too_many(builder, make_deck):
+    _bullets(builder, [(f"Point {i}", 0) for i in range(1, 7)])
+    (f,) = check("OVS209", make_deck(builder))
+    assert f.message == "6 bullets in one list in 'Content Placeholder 2', over 4" and f.snippet == "Point 1"
+    assert check("OVS211", make_deck(builder)) == []
+
+
+def test_siblings_are_counted_under_their_parent(builder, make_deck):
+    # Four top-level points, each with three sub-points: no list is over four.
+    items = [(t, lvl) for n in range(4) for t, lvl in [(f"Point {n}", 0)] + [(f"Sub {n}.{k}", 1) for k in range(3)]]
+    _bullets(builder, items)
+    assert check("OVS209", make_deck(builder)) == []
+    # A fifth top-level point after the sub-points still joins the first list.
+    _bullets(builder, items + [("Point 5", 0)])
+    (f,) = check("OVS209", make_deck(builder))
+    assert f.slide == 2 and f.message.startswith("5 bullets")
+
+
+def test_paragraphs_without_bullets_are_not_a_list(builder, make_deck):
+    from pptx.oxml.ns import qn
+
+    builder.text("\n".join(f"Line {i}" for i in range(8)), h=4)  # a text box: no bullets
+    body = _bullets(builder, [(f"Point {i}", 0) for i in range(6)])
+    for p in body.text_frame.paragraphs:  # bullets switched off in a placeholder
+        p._p.get_or_add_pPr().append(p._p.makeelement(qn("a:buNone"), {}))
+    assert check("OVS209", make_deck(builder)) == []
+
+
+def test_bullets_stated_in_a_text_box_count(builder, make_deck):
+    from pptx.oxml.ns import qn
+
+    box = builder.text("\n".join(f"Item {i}" for i in range(5)), h=4)
+    for p in box.text_frame.paragraphs:
+        p._p.get_or_add_pPr().append(p._p.makeelement(qn("a:buChar"), {"char": "•"}))
+    (f,) = check("OVS209", make_deck(builder))
+    assert f.message.startswith("5 bullets in one list in 'TextBox 1'")
+
+
+def test_a_three_level_nest_is_too_deep(builder, make_deck):
+    _bullets(builder, [("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
+    (f,) = check("OVS211", make_deck(builder))
+    assert f.message == "bullets nested 3 levels deep in 'Content Placeholder 2', over 2"
+    assert f.snippet == "Sub-sub-point"
+    assert check("OVS209", make_deck(builder)) == []
+    assert check("OVS211", make_deck(builder), Settings(max_bullet_depth=3)) == []

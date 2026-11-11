@@ -76,12 +76,15 @@ overset --explain OVS002
 | OVS104 | render | Text too close in tone to what is behind it (sampled from pixels) |
 | OVS201 | structure | A placeholder left empty |
 | OVS202 | structure | A picture stretched out of its aspect ratio |
-| OVS203 | structure | More words on a slide than an audience will read |
+| OVS203 | structure | More words on a slide than an audience will read (a coarse backstop; OVS209–211 are the specific checks) |
 | OVS204 | structure | A slide with no title (no title placeholder, or an empty one) |
 | OVS205 | structure | Two slides share a title |
 | OVS206 | structure | A picture, chart or graphic with no alt text, or only a file name for one |
 | OVS207 | structure | A table with no header row |
 | OVS208 | structure | A section left with PowerPoint's default name ("Default Section", "Untitled Section") |
+| OVS209 | structure | A list with more than `max-bullets` (4) items at one level |
+| OVS210 | render | A bullet that renders on more than `max-bullet-lines` (2) lines |
+| OVS211 | structure | Bullets nested more than `max-bullet-depth` (2) levels deep |
 | OVS301 | structure | Two consecutive slides use the same layout *(off by default)* |
 | OVS401–406 | vision | Clutter, weak hierarchy, misalignment, text over busy images, monotonous sequences, a slide that doesn't belong *(opt-in)* |
 
@@ -187,6 +190,9 @@ palette-tolerance = 12              # RGB distance
 font-dirs = ["fonts/"]              # relative to this file
 min-font-pt = 10
 max-words = 90
+max-bullets = 4                     # items at one level of one list
+max-bullet-lines = 2                # rendered lines per bullet
+max-bullet-depth = 2                # outline levels a list may use
 min-contrast = 4.5                 # body text (WCAG 2.2 AA)
 min-contrast-large = 3.0           # 18pt and up, or 14pt bold
 tolerance-pt = 2.0

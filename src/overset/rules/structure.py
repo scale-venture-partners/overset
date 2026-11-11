@@ -333,6 +333,66 @@ def default_section_name(ctx):
     return out
 
 
+def _lists(paragraphs):
+    """Each run of sibling bullets -- items at one level under one parent -- as
+    (level, items). A paragraph without a bullet ends every open list; a return to
+    a shallower level ends the deeper ones."""
+    open_lists: dict[int, list] = {}
+    for p in paragraphs:
+        if not p.bulleted:
+            yield from ((lvl, items) for lvl, items in sorted(open_lists.items()))
+            open_lists = {}
+            continue
+        for deeper in sorted(lvl for lvl in open_lists if lvl > p.level):
+            yield deeper, open_lists.pop(deeper)
+        open_lists.setdefault(p.level, []).append(p)
+    yield from ((lvl, items) for lvl, items in sorted(open_lists.items()))
+
+
+@rule(
+    "OVS209",
+    "too-many-bullets",
+    "A list with more items than an audience will hold",
+    "structure",
+    explanation="Counts sibling bullets: items at one level under one parent. Kosslyn et al. (2012) found "
+    "lists of more than four items in 91% of 140 sampled decks. Paragraphs count as bullets when they show "
+    "a bullet or a number, stated or inherited from the layout. Limit: `max-bullets` (default 4).",
+)
+def too_many_bullets(ctx):
+    out, limit = [], ctx.settings.max_bullets
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            for _, items in _lists(shape.paragraphs):
+                if len(items) > limit:
+                    message = f"{len(items)} bullets in one list in '{shape.label}', over {limit}"
+                    out.append(finding(ctx, "OVS209", message, slide.number, clip(items[0].text)))
+    return out
+
+
+@rule(
+    "OVS211",
+    "bullet-depth",
+    "Bullets nested deeper than an audience can follow",
+    "structure",
+    explanation="Kosslyn et al. (2012) found lists nested past a shallow hierarchy in 86% of sampled decks. "
+    "Reported once per text frame, at its deepest bullet. Limit: `max-bullet-depth` levels (default 2).",
+)
+def bullet_depth(ctx):
+    out, limit = [], ctx.settings.max_bullet_depth
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            deep = [p for p in shape.paragraphs if p.bulleted and p.level + 1 > limit]
+            if deep:
+                deepest = max(deep, key=lambda p: p.level)
+                message = f"bullets nested {deepest.level + 1} levels deep in '{shape.label}', over {limit}"
+                out.append(finding(ctx, "OVS211", message, slide.number, clip(deepest.text)))
+    return out
+
+
 @rule(
     "OVS301",
     "repeated-layout",

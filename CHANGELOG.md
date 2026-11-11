@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- New rules for bullet structure, from the most-violated measurable rules in Kosslyn et al. (2012):
+  OVS209 (too-many-bullets, more than `max-bullets` = 4 items at one level of one list), OVS210
+  (long-bullet, a render rule: a bullet on more than `max-bullet-lines` = 2 rendered lines) and OVS211
+  (bullet-depth, nested more than `max-bullet-depth` = 2 levels). A paragraph is a bullet when it shows
+  a bullet or number, stated or inherited from the layout. On by default; OVS203's word count stays as
+  a coarse backstop.
 - New rules OVS207 (table-without-header) and OVS208 (default-section-name), two more errors from
   Microsoft's Accessibility Checker: a table whose "Header Row" option is off, and a section still
   named "Default Section" or "Untitled Section". Both on by default.

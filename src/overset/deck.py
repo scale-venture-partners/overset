@@ -68,6 +68,13 @@ class Box:
 
 
 @dataclass
+class Paragraph:
+    text: str
+    level: int  # 0-based outline level
+    bulleted: bool  # shows a bullet or a number, stated or inherited
+
+
+@dataclass
 class Run:
     text: str
     size_pt: float | None  # effective: stated or inherited size times any shrink-on-overflow scale
@@ -94,6 +101,7 @@ class Shape:
     alt_text: str = ""  # the shape's description (cNvPr/@descr)
     decorative: bool = False  # marked decorative in PowerPoint, so it needs no alt text
     header_row: bool | None = None  # tables: the first row is marked as a header row
+    paragraphs: list[Paragraph] = field(default_factory=list)  # text frames, non-empty paragraphs only
 
     @property
     def label(self) -> str:
@@ -258,6 +266,21 @@ class Styles:
         return [*styles, self.default]
 
     @staticmethod
+    def bulleted(chain: list, level: int) -> bool:
+        """Whether a paragraph level shows a bullet or a number by inheritance: the
+        nearest list style that says either way decides."""
+        for list_style in chain:
+            lvl = list_style.find(qn(f"a:lvl{level + 1}pPr")) if list_style is not None else None
+            if lvl is None:
+                continue
+            for child in lvl:
+                if child.tag == qn("a:buNone"):
+                    return False
+                if child.tag in _BULLET_TAGS:
+                    return True
+        return False
+
+    @staticmethod
     def line_spacing(chain: list, level: int):
         """The `a:lnSpc` element a paragraph level inherits, or None (100%)."""
         for list_style in chain:
@@ -274,6 +297,30 @@ class Styles:
             if size is not None:
                 return size
         return None
+
+
+_BULLET_TAGS = {qn("a:buChar"), qn("a:buAutoNum"), qn("a:buBlip")}
+
+
+def _paragraphs(text_frame, chain: list | None) -> list[Paragraph]:
+    out = []
+    for paragraph in text_frame.paragraphs:
+        text = "".join(r.text for r in paragraph.runs)
+        if not text.strip():
+            continue
+        level = paragraph.level
+        stated = paragraph._p.pPr
+        bullet = None
+        if stated is not None:
+            for child in stated:
+                if child.tag == qn("a:buNone"):
+                    bullet = False
+                elif child.tag in _BULLET_TAGS:
+                    bullet = True
+        if bullet is None:
+            bullet = Styles.bulleted(chain, level) if chain else False
+        out.append(Paragraph(text, level, bullet))
+    return out
 
 
 def _runs(text_frame, chain: list | None = None) -> list[Run]:
@@ -350,7 +397,9 @@ def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None 
     if shape.has_text_frame:
         out.text = shape.text_frame.text
         styles, master = ctx or (None, None)
-        out.runs = _runs(shape.text_frame, styles.chain(shape, master) if styles else None)
+        chain = styles.chain(shape, master) if styles else None
+        out.runs = _runs(shape.text_frame, chain)
+        out.paragraphs = _paragraphs(shape.text_frame, chain)
         out.auto_grow = shape.text_frame.auto_size == MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
     elif kind == "table":
         out.header_row = bool(shape.table.first_row)
