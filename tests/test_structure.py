@@ -89,9 +89,15 @@ def test_a_solid_fill_off_the_palette_is_reported(builder, make_deck):
     assert "FF00FF" in f.message and "fill of" in f.snippet
 
 
-def test_an_empty_title_placeholder_is_reported(builder, make_deck):
+def test_an_empty_placeholder_is_reported_and_an_empty_title_only_once(builder, make_deck):
     builder.new_slide(layout=1)  # title and content, both left empty
-    found = check("OVS201", make_deck(builder))
+    deck = make_deck(builder)
+    (body,) = check("OVS201", deck, Settings(ignore=()))
+    assert body.message.startswith("empty object placeholder")
+    (title,) = check("OVS204", deck)
+    assert title.message == "title placeholder 'Title 1' is empty"
+    # With the title rule off, OVS201 reports the empty title itself.
+    found = check("OVS201", deck, Settings(ignore=("OVS204",)))
     assert {f.message.split()[1] for f in found} == {"title", "object"}
 
 
@@ -277,3 +283,44 @@ def test_shrink_to_fit_scales_an_inherited_size(builder, make_deck):
     body_pr.append(norm)
     (f,) = check("OVS101", make_deck(builder))
     assert f.message == "text at 8.0pt, under 10pt"
+
+
+def _titled(builder, title):
+    slide = builder.new_slide(layout=5)  # Title Only
+    slide.shapes.title.text = title
+    return slide
+
+
+def test_a_slide_without_a_title_placeholder_has_no_title(builder, make_deck):
+    builder.text("Big words in a text box, styled like a title", size=44)  # a text box is not a title
+    _titled(builder, "Revenue by segment")
+    (f,) = check("OVS204", make_deck(builder))
+    assert (f.slide, f.message) == (1, "no title placeholder")
+
+
+def test_slides_sharing_a_title_are_reported_against_the_first(builder, make_deck):
+    _titled(builder, "Agenda")
+    _titled(builder, "Revenue by segment")
+    _titled(builder, "  agenda ")  # the same, ignoring case and spacing
+    _titled(builder, "AGENDA")
+    found = check("OVS205", make_deck(builder))
+    assert [(f.slide, f.message, f.snippet) for f in found] == [
+        (3, "same title as slide 1", "agenda"),
+        (4, "same title as slide 1", "AGENDA"),
+    ]
+
+
+def test_an_empty_title_is_not_a_duplicate(builder, make_deck):
+    builder.new_slide(layout=5)
+    builder.new_slide(layout=5)
+    assert check("OVS205", make_deck(builder)) == []
+
+
+def test_hidden_slides_are_not_checked_for_titles(builder, make_deck):
+    _titled(builder, "Agenda")
+    builder.new_slide()._element.set("show", "0")  # hidden, untitled
+    hidden_copy = _titled(builder, "Agenda")
+    hidden_copy._element.set("show", "0")
+    deck = make_deck(builder)
+    assert deck.slides[1].hidden and not deck.slides[0].hidden
+    assert check("OVS204", deck) == [] and check("OVS205", deck) == []

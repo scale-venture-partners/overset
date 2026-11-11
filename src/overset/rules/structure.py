@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from overset.deck import TITLE_PLACEHOLDERS
 from overset.rules.base import clip, finding, rule
 
 
@@ -155,8 +156,12 @@ def off_palette_color(ctx):
 )
 def empty_placeholder(ctx):
     out = []
+    # An empty title is reported once, as a missing title, when that rule is on.
+    titles_elsewhere = "OVS204" in ctx.settings.active_codes()
     for slide in ctx.deck.slides:
         for shape in slide.shapes:
+            if titles_elsewhere and shape.placeholder in TITLE_PLACEHOLDERS:
+                continue
             if shape.placeholder and not shape.quiet_placeholder and shape.kind == "text" and not shape.text.strip():
                 out.append(
                     finding(
@@ -194,6 +199,55 @@ def too_many_words(ctx):
     for slide in ctx.deck.slides:
         if slide.words > limit:
             out.append(finding(ctx, "OVS203", f"{slide.words} words, over {limit}", slide.number))
+    return out
+
+
+@rule(
+    "OVS204",
+    "missing-slide-title",
+    "A slide with no title",
+    "structure",
+    explanation="A slide's title is what a screen reader announces and what the outline, the slide "
+    "sorter and navigation show; Microsoft's Accessibility Checker reports a missing one as an error. "
+    "Only a title placeholder counts, not a text box styled like one. An empty title placeholder is "
+    "reported here rather than as OVS201. Hidden slides are skipped.",
+)
+def missing_slide_title(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        if slide.hidden:
+            continue
+        title = slide.title
+        if title is None:
+            out.append(finding(ctx, "OVS204", "no title placeholder", slide.number))
+        elif not title.text.strip():
+            out.append(finding(ctx, "OVS204", f"title placeholder '{title.label}' is empty", slide.number))
+    return out
+
+
+@rule(
+    "OVS205",
+    "duplicate-slide-title",
+    "Two slides share a title",
+    "structure",
+    explanation="Slides with the same title can't be told apart by a screen-reader user or in the "
+    "outline; Microsoft's Accessibility Checker suggests making each one unique. Compared ignoring case "
+    "and spacing. Each repeat is reported once, against the first slide with that title. Hidden slides "
+    "are skipped.",
+)
+def duplicate_slide_title(ctx):
+    out, first = [], {}
+    for slide in ctx.deck.slides:
+        if slide.hidden or slide.title is None:
+            continue
+        text = " ".join(slide.title.text.split())
+        key = text.casefold()
+        if not key:
+            continue
+        if key in first:
+            out.append(finding(ctx, "OVS205", f"same title as slide {first[key]}", slide.number, clip(text)))
+        else:
+            first[key] = slide.number
     return out
 
 

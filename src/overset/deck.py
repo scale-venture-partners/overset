@@ -98,11 +98,20 @@ class Shape:
         return f"{self.group} > {self.name}" if self.group else self.name
 
 
+TITLE_PLACEHOLDERS = ("TITLE", "CENTER_TITLE")
+
+
 @dataclass
 class Slide:
     number: int  # 1-based
     layout: str
     shapes: list[Shape]
+    hidden: bool = False  # hidden in the slide show
+
+    @property
+    def title(self) -> Shape | None:
+        """The slide's title placeholder, if it has one."""
+        return next((s for s in self.shapes if s.placeholder in TITLE_PLACEHOLDERS and not s.from_layout), None)
 
     @property
     def text_shapes(self) -> list[Shape]:
@@ -336,5 +345,6 @@ def load(path: str | Path) -> Deck:
         # a renderer's words have to be attributable to some frame.
         for inherited in (slide.slide_layout.shapes, slide.slide_layout.slide_master.shapes):
             shapes += _shapes([s for s in inherited if not s.is_placeholder], from_layout=True, ctx=ctx)
-        slides.append(Slide(number, slide.slide_layout.name, shapes))
+        hidden = slide._element.get("show") in ("0", "false")
+        slides.append(Slide(number, slide.slide_layout.name, shapes, hidden))
     return Deck(path, int(prs.slide_width), int(prs.slide_height), slides)
