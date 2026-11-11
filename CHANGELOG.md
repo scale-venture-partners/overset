@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- OVS106 (emphasis-overuse) now counts only paragraphs of more than ten words, and exempts source, note
+  and caption lines and italic quotations; on the starter corpus, 619 findings became 108.
+- OVS206 (missing-alt-text) reports once per slide, naming each visual, instead of once per visual
+  (1,978 findings on the corpus became 681).
+- Fewer false findings, from running overset over the starter corpus (docs/corpus.md):
+  - OVS202 no longer counts distortion within a small image's pixel rounding (a 28x32 icon's aspect is
+    only known to about 4%); on the corpus, 287 findings became 132.
+  - OVS004 tests the area text can occupy, not the whole frame, so a frame whose padding hangs over the
+    edge is fine (103 became 53), and says when a frame is entirely off the slide.
 - New typography rules, from Kosslyn et al. (2012): OVS105 (too-many-font-families, more than
   `max-font-families` = 2 families across the deck, counting inherited and theme fonts, with weights of
   one family counted once), OVS106 (emphasis-overuse, a whole paragraph of four or more words in bold,

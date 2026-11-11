@@ -101,7 +101,8 @@ class Shape:
     placeholder: str | None = None  # the placeholder type's name, if a placeholder
     quiet_placeholder: bool = False
     auto_grow: bool = False  # the frame resizes to its text, so text past it is not overflow
-    image_aspect: float | None = None  # pictures: aspect of the visible (cropped) source
+    image_size: tuple[float, float] | None = None  # pictures: the visible (cropped) source, in pixels
+    text_area: Box | None = None  # text frames: the box less its inner margins, where text can go
     from_layout: bool = False  # drawn by the layout or master, not the slide
     group: str | None = None  # the outermost group this shape sits in, if any
     graphic: str | None = None  # a visual that needs alt text: "picture", "chart", "SmartArt graphic", "object"
@@ -408,7 +409,7 @@ def _runs(text_frame, chain: list | None = None, theme: dict | None = None) -> l
     return runs
 
 
-def _picture_aspect(picture) -> float | None:
+def _picture_size(picture) -> tuple[float, float] | None:
     from PIL import Image
 
     try:
@@ -420,7 +421,7 @@ def _picture_aspect(picture) -> float | None:
     visible_h = ih * (1 - picture.crop_top - picture.crop_bottom)
     if visible_w <= 0 or visible_h <= 0:
         return None
-    return visible_w / visible_h
+    return visible_w, visible_h
 
 
 _GRAPHIC_DATA = {
@@ -451,6 +452,17 @@ def _description(element) -> tuple[str, bool]:
     return cnvpr.get("descr") or "", decorative
 
 
+def _text_area(box: Box | None, text_frame) -> Box | None:
+    """The part of a text frame its text can occupy: the box less its inner margins
+    (by default 0.1in left and right, 0.05in top and bottom). Margins are not scaled by
+    a group's transform, any more than font sizes are; each is capped at half the frame."""
+    if box is None:
+        return None
+    left, right = min(text_frame.margin_left, box.w // 2), min(text_frame.margin_right, box.w // 2)
+    top, bottom = min(text_frame.margin_top, box.h // 2), min(text_frame.margin_bottom, box.h // 2)
+    return Box(box.x + left, box.y + top, max(box.w - left - right, 0), max(box.h - top - bottom, 0))
+
+
 def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None = None, ctx=None) -> Shape:
     kind = "other"
     if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
@@ -472,13 +484,14 @@ def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None 
         out.runs = _runs(shape.text_frame, chain, styles.theme_fonts(master) if styles else None)
         out.paragraphs = _paragraphs(shape.text_frame, chain)
         out.auto_grow = shape.text_frame.auto_size == MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+        out.text_area = _text_area(out.box, shape.text_frame)
     elif kind == "table":
         out.header_row = bool(shape.table.first_row)
         cells = [c.text_frame for row in shape.table.rows for c in row.cells]
         out.text = "\n".join(c.text for c in cells)
         out.runs = [r for c in cells for r in _runs(c)]
     if kind == "picture":
-        out.image_aspect = _picture_aspect(shape)
+        out.image_size = _picture_size(shape)
     out.graphic = _graphic(shape._element)
     if out.graphic:
         out.alt_text, out.decorative = _description(shape._element)

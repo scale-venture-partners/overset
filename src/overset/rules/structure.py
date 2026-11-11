@@ -44,21 +44,22 @@ def invalid_package(ctx):
     "frame-off-slide",
     "A text frame extends past the slide edge",
     "structure",
-    explanation="Measured from the file, not the render, so it holds even where a renderer clips. "
-    "Pictures are exempt: a full-bleed image is meant to reach the edge.",
+    explanation="Measured from the file, not the render, so it holds even where a renderer clips. Only "
+    "the part of the frame text can occupy counts -- the box less its inner margins -- so a frame "
+    "whose padding hangs over the edge is fine. A frame entirely off the slide is said so: it is "
+    "invisible in the slide show. Pictures are exempt: a full-bleed image is meant to reach the edge.",
 )
 def frame_off_slide(ctx):
-    out, tol = [], ctx.settings.tolerance_emu
+    out, tol, slide_box = [], ctx.settings.tolerance_emu, ctx.deck.frame
     for slide in ctx.deck.slides:
         for shape in slide.shapes:
-            if shape.from_layout or shape.kind != "text" or not shape.text.strip() or shape.box is None:
+            area = shape.text_area or shape.box
+            if shape.from_layout or shape.kind != "text" or not shape.text.strip() or area is None:
                 continue
-            if not ctx.deck.frame.contains(shape.box, tol):
-                out.append(
-                    finding(
-                        ctx, "OVS004", f"'{shape.label}' extends past the slide edge", slide.number, clip(shape.text)
-                    )
-                )
+            if slide_box.contains(area, tol):
+                continue
+            where = "is entirely off the slide" if not slide_box.intersection(area) else "extends past the slide edge"
+            out.append(finding(ctx, "OVS004", f"'{shape.label}' {where}", slide.number, clip(shape.text)))
     return out
 
 
@@ -195,18 +196,40 @@ def too_many_font_families(ctx):
     return [finding(ctx, "OVS105", f"{len(first)} font families in the deck, over {limit}: {names}", None)]
 
 
-LABEL_WORDS = 4  # a paragraph shorter than this is a label, where caps or bold are a style choice
+# A paragraph this short is a heading, label or callout, where bold or capitals mark it out on purpose.
+HEADING_WORDS = 10
+# Attribution and caption lines are conventionally set in italic (or small bold); they are not body text.
+_CITATION = re.compile(
+    r"^\s*(?:sources?|notes?|credits?|photo(?:graph)?|image|picture|figure|fig\.?|table|data|adapted from|"
+    r"courtesy of|via|references?|\u00a9|\*)\b",
+    re.IGNORECASE,
+)
+
+
+_QUOTE_MARKS = "\"'\u201c\u201d\u2018\u2019\u00ab\u00bb\u201e"
+
+
+def _overused(paragraph) -> tuple[str, ...]:
+    """The emphasis a paragraph overuses: none for headings, labels, source and caption lines, and
+    italic quotations."""
+    if len(paragraph.text.split()) <= HEADING_WORDS or _CITATION.match(paragraph.text):
+        return ()
+    quoted = paragraph.text.lstrip()[:1] in _QUOTE_MARKS  # a quotation in italic is the convention
+    return tuple(e for e in paragraph.emphasis if not (quoted and e == "italic"))
 
 
 @rule(
     "OVS106",
     "emphasis-overuse",
-    "A whole paragraph set in bold, italic or capitals",
+    "A whole paragraph of body text set in bold, italic or capitals",
     "structure",
-    explanation="Emphasis works by contrast; a paragraph that is all bold, all italic or all capitals has "
+    explanation="Emphasis works by contrast; body text that is all bold, all italic or all capitals has "
     "nothing to stand out from, and capitals read slower. Kosslyn et al. (2012) found it in 81% of sampled "
-    "decks. Paragraphs under four words (labels) and slide titles are exempt. Only stated bold and italic "
-    "count; capitals are the All Caps option or text typed in capitals. Reported once per text frame.",
+    "decks. Only paragraphs of more than ten words count -- shorter ones are headings, labels and callouts -- "
+    "and source, note and caption lines ('Source: ...', 'Figure 2: ...'), quotations in italic and slide "
+    "titles are exempt. "
+    "Only stated bold and italic count; capitals are the All Caps option or text typed in capitals. "
+    "Reported once per text frame.",
 )
 def emphasis_overuse(ctx):
     out = []
@@ -214,9 +237,9 @@ def emphasis_overuse(ctx):
         for shape in slide.shapes:
             if shape.from_layout or shape.placeholder in TITLE_PLACEHOLDERS:
                 continue
-            hit = next((p for p in shape.paragraphs if p.emphasis and len(p.text.split()) >= LABEL_WORDS), None)
+            hit = next((p for p in shape.paragraphs if _overused(p)), None)
             if hit:
-                kinds = " and ".join(hit.emphasis)
+                kinds = " and ".join(_overused(hit))
                 message = f"a whole paragraph in {kinds} in '{shape.label}'"
                 out.append(finding(ctx, "OVS106", message, slide.number, clip(hit.text)))
     return out
@@ -273,17 +296,24 @@ def empty_placeholder(ctx):
     "image-distorted",
     "A picture stretched out of its aspect ratio",
     "structure",
-    explanation="Compares the frame's aspect with the visible (cropped) source image's.",
+    explanation="Compares the frame's aspect with the visible (cropped) source image's. A small image's "
+    "own aspect is only known to the nearest pixel -- a 20-pixel icon's to about 5% -- so distortion "
+    "within that rounding is not counted.",
 )
 def image_distorted(ctx):
     out, limit = [], ctx.settings.max_aspect_distortion
     for slide in ctx.deck.slides:
         for shape in slide.shapes:
-            if shape.kind != "picture" or not shape.image_aspect or not shape.box or shape.box.h <= 0:
+            if shape.kind != "picture" or not shape.image_size or not shape.box or shape.box.h <= 0:
                 continue
+            w, h = shape.image_size
             shown = shape.box.w / shape.box.h
-            distortion = abs(shown / shape.image_aspect - 1)
-            if distortion > limit:
+            distortion = abs(shown * h / w - 1)
+            # The source's true aspect lies anywhere within half a pixel each way; only distortion
+            # beyond that range is the frame's.
+            low, high = max(w - 0.5, 1e-9) / (h + 0.5), (w + 0.5) / max(h - 0.5, 1e-9)
+            beyond = abs(shown / min(max(shown, low), high) - 1)
+            if beyond > limit:
                 out.append(
                     finding(ctx, "OVS202", f"'{shape.label}' is stretched {distortion:.0%} out of shape", slide.number)
                 )
@@ -369,22 +399,30 @@ _FILENAME_ALT = re.compile(
     "Accessibility Checker reports one as an error, including alt text that is only a file name. "
     "Checks pictures (including video), charts, SmartArt and embedded objects on the slide, inside "
     "groups too. Visuals marked decorative in PowerPoint, and the template's own (layout and master), "
-    "are exempt.",
+    "are exempt. Reported once per slide, naming each visual.",
 )
 def missing_alt_text(ctx):
     out = []
     for slide in ctx.deck.slides:
+        missing, named = [], []
         for shape in slide.shapes:
             if not shape.graphic or shape.decorative or shape.from_layout:
                 continue
             alt = " ".join(shape.alt_text.split())
             if not alt:
-                message = f"{shape.graphic} '{shape.label}' has no alt text"
+                missing.append(shape)
             elif _FILENAME_ALT.match(alt):
-                message = f"{shape.graphic} '{shape.label}' has a file name for alt text"
-            else:
-                continue
-            out.append(finding(ctx, "OVS206", message, slide.number, clip(alt)))
+                named.append(shape)
+        if len(missing) + len(named) == 1:
+            shape = (missing or named)[0]
+            what = "has no alt text" if missing else "has a file name for alt text"
+            alt = clip(" ".join(shape.alt_text.split()))
+            out.append(finding(ctx, "OVS206", f"{shape.graphic} '{shape.label}' {what}", slide.number, alt))
+        elif missing or named:
+            counts = [f"{len(missing)} with none"] * bool(missing) + [f"{len(named)} with a file name"] * bool(named)
+            names = ", ".join(f"'{s.label}'" for s in missing + named)
+            message = f"{len(missing) + len(named)} visuals need alt text ({', '.join(counts)}): {names}"
+            out.append(finding(ctx, "OVS206", clip(message, 200), slide.number))
     return out
 
 

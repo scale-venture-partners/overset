@@ -537,10 +537,10 @@ def test_too_many_font_families_in_a_deck(builder, make_deck):
 
 
 def test_a_whole_paragraph_in_bold_italic_or_capitals_is_overused_emphasis(builder, make_deck):
-    bold = builder.text("Every word of this sentence is bold")
+    bold = builder.text("Every single word of this rather long sentence of body text is set in bold")
     bold.text_frame.paragraphs[0].runs[0].font.bold = True
-    builder.text("THIS SENTENCE IS TYPED IN CAPITALS", y=2)
-    caps = builder.text("This one uses the all caps option", y=3)
+    builder.text("THIS WHOLE SENTENCE OF BODY TEXT HAS BEEN TYPED IN CAPITALS FROM START TO END", y=2)
+    caps = builder.text("This sentence of body text uses the all caps option for all of its words", y=3)
     caps.text_frame.paragraphs[0].runs[0]._r.get_or_add_rPr().set("cap", "all")
     found = check("OVS106", make_deck(builder))
     assert [f.message for f in found] == [
@@ -572,3 +572,76 @@ def test_underlined_text_that_is_not_a_link_is_reported(builder, make_deck):
     run.hyperlink.address = "https://example.com"
     (f,) = check("OVS107", make_deck(builder))
     assert f.message == "underlined text in 'TextBox 1' that is not a link" and f.snippet == "Underlined for emphasis"
+
+
+def test_distortion_within_a_small_images_pixel_rounding_is_not_counted(builder, make_deck):
+    # The same 4% stretch: within a 28x32 icon's rounding, but not a 2800x3200 photo's.
+    builder.picture(size=(28, 32), w=0.28 * 1.04, h=0.32)
+    builder.picture(size=(2800, 3200), y=3, w=2.8 * 1.04, h=3.2)
+    builder.picture(size=(773, 2), y=6.8, w=7.73, h=0.02 * 1.2)  # a 2-pixel rule: up to 25% taller is rounding
+    (f,) = check("OVS202", make_deck(builder))
+    assert f.message == "'Picture 2' is stretched 4% out of shape"
+
+
+def test_a_frame_whose_padding_hangs_over_the_edge_is_fine(builder, make_deck):
+    padded = builder.text("Fits", x=-0.05, w=4)  # 0.05in over the edge, inside the 0.1in left margin
+    bare = builder.text("Reaches", x=-0.05, y=3, w=4)
+    bare.text_frame.margin_left = 0
+    (f,) = check("OVS004", make_deck(builder))
+    assert f.message == "'TextBox 2' extends past the slide edge"
+    assert padded.left < 0
+
+
+def test_a_frame_entirely_off_the_slide_says_so(builder, make_deck):
+    builder.text("Parked speaker notes", x=14, y=1, w=3)
+    (f,) = check("OVS004", make_deck(builder))
+    assert f.message == "'TextBox 1' is entirely off the slide"
+
+
+def test_a_groups_scale_does_not_scale_its_childrens_text_margins(builder, make_deck):
+    card = builder.group()
+    builder.text("Inside a group", x=1, y=1, w=4, h=1, into=card)
+    _scale_group(card, 50, 50)  # child coordinates 50 times smaller than the slide's
+    (shape,) = make_deck(builder).slides[0].shapes
+    left = int(Inches(0.1))  # the default margin, unscaled
+    assert shape.text_area.x - shape.box.x == left
+    assert shape.text_area.w == shape.box.w - 2 * left
+
+
+def test_headings_sources_and_italic_quotations_are_not_overused_emphasis(builder, make_deck):
+    def styled(text, y, bold=False, italic=False):
+        run = builder.text(text, y=y, h=0.5).text_frame.paragraphs[0].runs[0]
+        run.font.bold, run.font.italic = bold, italic
+        return run
+
+    styled("The International Style of the 1920s to the 1970s", 0.5, bold=True)  # a heading: ten words
+    styled("Source: IMF, Developments in Exchange Rate Arrangements and Markets in 2024 and beyond", 1.2, italic=True)
+    styled(
+        "\u201cEstablished publishers have a strong motivation to hype claims of predation as a threat\u201d",
+        2,
+        italic=True,
+    )
+    assert check("OVS106", make_deck(builder)) == []
+    # The same quotation in bold is still emphasis.
+    styled(
+        "\u201cEstablished publishers have a strong motivation to hype claims of predation as a threat\u201d",
+        3,
+        bold=True,
+    )
+    (f,) = check("OVS106", make_deck(builder))
+    assert f.message == "a whole paragraph in bold in 'TextBox 4'"
+
+
+def test_missing_alt_text_is_reported_once_per_slide(builder, make_deck):
+    for i in range(3):
+        _alt(builder.picture(x=1 + 3 * i), "")
+    _alt(builder.picture(y=4), "IMG_0042.jpg")
+    _alt(builder.picture(x=5, y=4), "Team photo at the 2025 offsite")
+    builder.new_slide()
+    _alt(builder.picture(), "")
+    names = "'Picture 1', 'Picture 2', 'Picture 3', 'Picture 4'"
+    found = check("OVS206", make_deck(builder))
+    assert [(f.slide, f.message) for f in found] == [
+        (1, f"4 visuals need alt text (3 with none, 1 with a file name): {names}"),
+        (2, "picture 'Picture 1' has no alt text"),
+    ]
