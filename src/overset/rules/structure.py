@@ -53,7 +53,7 @@ def frame_off_slide(ctx):
             if not ctx.deck.frame.contains(shape.box, tol):
                 out.append(
                     finding(
-                        ctx, "OVS004", f"'{shape.name}' extends past the slide edge", slide.number, clip(shape.text)
+                        ctx, "OVS004", f"'{shape.label}' extends past the slide edge", slide.number, clip(shape.text)
                     )
                 )
     return out
@@ -134,7 +134,7 @@ def off_palette_color(ctx):
                 continue
             colors = [(r.color, r.text) for r in shape.runs if r.color]
             if shape.fill:
-                colors.append((shape.fill, f"fill of '{shape.name}'"))
+                colors.append((shape.fill, f"fill of '{shape.label}'"))
             for color, where in colors:
                 if color not in seen and not _in_palette(color, palette, tol):
                     seen.add(color)
@@ -159,7 +159,7 @@ def empty_placeholder(ctx):
             if shape.placeholder and not shape.quiet_placeholder and shape.kind == "text" and not shape.text.strip():
                 out.append(
                     finding(
-                        ctx, "OVS201", f"empty {shape.placeholder.lower()} placeholder '{shape.name}'", slide.number
+                        ctx, "OVS201", f"empty {shape.placeholder.lower()} placeholder '{shape.label}'", slide.number
                     )
                 )
     return out
@@ -182,7 +182,7 @@ def image_distorted(ctx):
             distortion = abs(shown / shape.image_aspect - 1)
             if distortion > limit:
                 out.append(
-                    finding(ctx, "OVS202", f"'{shape.name}' is stretched {distortion:.0%} out of shape", slide.number)
+                    finding(ctx, "OVS202", f"'{shape.label}' is stretched {distortion:.0%} out of shape", slide.number)
                 )
     return out
 

@@ -8,6 +8,11 @@ python-pptx resolves a placeholder's position through its layout, but not its
 font size or colour through the theme. Where a value is inherited rather than
 stated, it is None here and the rules that need it skip that run rather than
 guess.
+
+Groups are flattened: each child becomes a Shape of its own, placed on the
+slide through the group's transform, so a rule sees text and pictures inside
+a group exactly as it sees them outside one. `group` keeps the outermost
+group's name for messages.
 """
 
 from __future__ import annotations
@@ -72,7 +77,7 @@ class Run:
 @dataclass
 class Shape:
     name: str
-    kind: str  # "text" | "picture" | "table" | "group" | "other"
+    kind: str  # "text" | "picture" | "table" | "other"
     box: Box | None
     text: str = ""
     runs: list[Run] = field(default_factory=list)
@@ -82,6 +87,13 @@ class Shape:
     auto_grow: bool = False  # the frame resizes to its text, so text past it is not overflow
     image_aspect: float | None = None  # pictures: aspect of the visible (cropped) source
     from_layout: bool = False  # drawn by the layout or master, not the slide
+    group: str | None = None  # the outermost group this shape sits in, if any
+
+    @property
+    def label(self) -> str:
+        """The name a message uses: a child is named with its group, since
+        names inside groups ("TextBox 3") repeat from card to card."""
+        return f"{self.group} > {self.name}" if self.group else self.name
 
 
 @dataclass
@@ -138,10 +150,35 @@ def _font_scale(text_frame) -> float:
     return 1.0
 
 
-def _box(shape) -> Box | None:
+# A transform from a shape's own coordinates to the slide's: x' = sx*x + tx.
+Transform = tuple[float, float, float, float]  # sx, sy, tx, ty
+IDENTITY: Transform = (1.0, 1.0, 0.0, 0.0)
+
+
+def _box(shape, t: Transform = IDENTITY) -> Box | None:
     if shape.left is None or shape.top is None or shape.width is None or shape.height is None:
         return None
-    return Box(int(shape.left), int(shape.top), int(shape.width), int(shape.height))
+    sx, sy, tx, ty = t
+    return Box(
+        round(sx * shape.left + tx), round(sy * shape.top + ty), round(sx * shape.width), round(sy * shape.height)
+    )
+
+
+def _child_transform(group, outer: Transform) -> Transform:
+    """Where a group's children land: the group maps its child extent
+    (chOff, chExt) onto its own box (off, ext), and the result goes through
+    the transform the group itself is under. Rotation and flips are ignored."""
+    xfrm = group._element.grpSpPr.find(qn("a:xfrm"))
+    ch_off = xfrm.find(qn("a:chOff")) if xfrm is not None else None
+    ch_ext = xfrm.find(qn("a:chExt")) if xfrm is not None else None
+    box = _box(group, outer)
+    if ch_off is None or ch_ext is None or box is None:
+        return outer
+    cx, cy = int(ch_off.get("x")), int(ch_off.get("y"))
+    cw, ch = int(ch_ext.get("cx")), int(ch_ext.get("cy"))
+    sx = box.w / cw if cw else 1.0
+    sy = box.h / ch if ch else 1.0
+    return (sx, sy, box.x - sx * cx, box.y - sy * cy)
 
 
 def _runs(text_frame) -> list[Run]:
@@ -171,18 +208,16 @@ def _picture_aspect(picture) -> float | None:
     return visible_w / visible_h
 
 
-def _shape(shape, from_layout=False) -> Shape:
+def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None = None) -> Shape:
     kind = "other"
     if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
         kind = "picture"
-    elif shape.shape_type == MSO_SHAPE_TYPE.GROUP:
-        kind = "group"
     elif getattr(shape, "has_table", False) and shape.has_table:
         kind = "table"
     elif shape.has_text_frame:
         kind = "text"
 
-    out = Shape(name=shape.name, kind=kind, box=_box(shape), fill=_fill(shape), from_layout=from_layout)
+    out = Shape(name=shape.name, kind=kind, box=_box(shape, t), fill=_fill(shape), from_layout=from_layout, group=group)
     if shape.is_placeholder:
         ph_type = shape.placeholder_format.type
         out.placeholder = getattr(ph_type, "name", str(ph_type))
@@ -195,10 +230,19 @@ def _shape(shape, from_layout=False) -> Shape:
         cells = [c.text_frame for row in shape.table.rows for c in row.cells]
         out.text = "\n".join(c.text for c in cells)
         out.runs = [r for c in cells for r in _runs(c)]
-    elif kind == "group":
-        out.text = "\n".join(_shape(child).text for child in shape.shapes)
     if kind == "picture":
         out.image_aspect = _picture_aspect(shape)
+    return out
+
+
+def _shapes(shapes, from_layout=False, t: Transform = IDENTITY, group: str | None = None) -> list[Shape]:
+    """Shapes as the rules see them, with every group replaced by its children."""
+    out = []
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            out += _shapes(shape.shapes, from_layout, _child_transform(shape, t), group or shape.name)
+        else:
+            out.append(_shape(shape, from_layout, t, group))
     return out
 
 
@@ -207,10 +251,10 @@ def load(path: str | Path) -> Deck:
     prs = Presentation(str(path))
     slides = []
     for number, slide in enumerate(prs.slides, start=1):
-        shapes = [_shape(s) for s in slide.shapes]
+        shapes = _shapes(slide.shapes)
         # The layout and master draw text too -- a footer, a logo lockup -- and
         # a renderer's words have to be attributable to some frame.
         for inherited in (slide.slide_layout.shapes, slide.slide_layout.slide_master.shapes):
-            shapes += [_shape(s, from_layout=True) for s in inherited if not s.is_placeholder]
+            shapes += _shapes([s for s in inherited if not s.is_placeholder], from_layout=True)
         slides.append(Slide(number, slide.slide_layout.name, shapes))
     return Deck(path, int(prs.slide_width), int(prs.slide_height), slides)

@@ -248,3 +248,25 @@ def test_soffice_profile_is_an_absolute_file_uri_for_a_relative_workdir(tmp_path
     uri = flag.split("=", 1)[1]
     assert uri == (tmp_path / "out" / "lo-profile").resolve().as_uri()
     assert uri.startswith("file:///")
+
+
+def test_text_spilling_out_of_a_frame_inside_a_group_is_an_overflow(builder, make_deck, fake_render):
+    # Before groups were flattened, the group's whole box was the frame, so a
+    # card's text running into the card below it went unreported.
+    card = builder.group()
+    builder.text("Quarterly revenue grew", x=1, y=1, w=4, h=0.5, into=card)
+    builder.text("Churn", x=1, y=3, w=4, h=0.5, into=card)
+    card.name = "Card"
+    deck = make_deck(builder)
+    render = fake_render(
+        [
+            [
+                word("Quarterly", 1, 1, 1.5, 0.4),
+                word("revenue", 1, 1.6, 1.3, 0.4),
+                word("grew", 1, 2.2, 0.8, 0.4),
+                word("Churn", 1, 3, 1, 0.4, block=1),
+            ]
+        ]
+    )
+    (f,) = check("OVS002", deck, render)
+    assert f.message == "text spills out of 'Card > TextBox 2'" and f.snippet == "revenue grew"

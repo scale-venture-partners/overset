@@ -34,10 +34,16 @@ class DeckBuilder:
         self.slide = self.prs.slides.add_slide(self.prs.slide_layouts[layout])
         return self.slide
 
-    def text(self, text, x=1, y=1, w=6, h=1, size=24, color=None, font=None, grow=False):
+    def group(self, into=None):
+        """A group shape; pass it as `into` to put text and pictures inside it."""
         if self.slide is None:
             self.new_slide()
-        box = self.slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+        return (into or self.slide).shapes.add_group_shape()
+
+    def text(self, text, x=1, y=1, w=6, h=1, size=24, color=None, font=None, grow=False, into=None):
+        if self.slide is None:
+            self.new_slide()
+        box = (into or self.slide).shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
         tf = box.text_frame
         tf.word_wrap = True
         from pptx.enum.text import MSO_AUTO_SIZE
@@ -52,13 +58,13 @@ class DeckBuilder:
             run.font.name = font
         return box
 
-    def picture(self, size=(400, 200), x=1, y=1, w=4, h=2):
+    def picture(self, size=(400, 200), x=1, y=1, w=4, h=2, into=None):
         if self.slide is None:
             self.new_slide()
         buf = io.BytesIO()
         Image.new("RGB", size, "red").save(buf, format="PNG")
         buf.seek(0)
-        return self.slide.shapes.add_picture(buf, Inches(x), Inches(y), Inches(w), Inches(h))
+        return (into or self.slide).shapes.add_picture(buf, Inches(x), Inches(y), Inches(w), Inches(h))
 
     def save(self, path: Path) -> Path:
         self.prs.save(str(path))

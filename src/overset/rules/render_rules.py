@@ -27,7 +27,7 @@ def _owners(word, shapes, tol):
         return []
     owners = []
     for shape in shapes:
-        if shape.box is None or shape.kind not in ("text", "table", "group"):
+        if shape.box is None or shape.kind not in ("text", "table"):
             continue
         if token in _norm(shape.text) and word.box.x < shape.box.right + tol and word.box.right > shape.box.x - tol:
             owners.append(shape)
@@ -92,7 +92,7 @@ def assign_owners(words, shapes, tol) -> list:
     seqs = {
         id(s): [_token(t) for t in s.text.split()]
         for s in shapes
-        if s.box is not None and s.kind in ("text", "table", "group") and s.text.strip()
+        if s.box is not None and s.kind in ("text", "table") and s.text.strip()
     }
     by_id = {id(s): s for s in shapes}
     pos = dict.fromkeys(seqs, 0)
@@ -131,7 +131,7 @@ def assign_owners(words, shapes, tol) -> list:
 
 
 def _owner_name(shape, word) -> str:
-    return shape.name if shape is not None else f"block {word.block}"
+    return shape.label if shape is not None else f"block {word.block}"
 
 
 def _by_block(words):
@@ -192,7 +192,7 @@ def text_overflows_frame(ctx):
         for word, owner in zip(page.words, assign_owners(page.words, shapes, tol), strict=True):
             if owner is None or owner.auto_grow or fits(owner.box, word, tol):
                 continue
-            spilled[owner.name].append(word)
+            spilled[owner.label].append(word)
         for name, words in spilled.items():
             out.append(finding(ctx, "OVS002", f"text spills out of '{name}'", page.number, _text(words)))
     return out
