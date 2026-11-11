@@ -74,6 +74,9 @@ overset --explain OVS002
 | OVS102 | structure | A font outside the configured set |
 | OVS103 | structure | A colour outside the configured palette |
 | OVS104 | render | Text too close in tone to what is behind it (sampled from pixels) |
+| OVS105 | structure | More than `max-font-families` (2) typeface families in the deck |
+| OVS106 | structure | A whole paragraph set in bold, italic or capitals |
+| OVS107 | structure | Underlined text that isn't a link |
 | OVS201 | structure | A placeholder left empty |
 | OVS202 | structure | A picture stretched out of its aspect ratio |
 | OVS203 | structure | More words on a slide than an audience will read (a coarse backstop; OVS209–211 are the specific checks) |
@@ -193,6 +196,7 @@ max-words = 90
 max-bullets = 4                     # items at one level of one list
 max-bullet-lines = 2                # rendered lines per bullet
 max-bullet-depth = 2                # outline levels a list may use
+max-font-families = 2               # typeface families across the deck
 min-contrast = 4.5                 # body text (WCAG 2.2 AA)
 min-contrast-large = 3.0           # 18pt and up, or 14pt bold
 tolerance-pt = 2.0

@@ -148,6 +148,101 @@ def off_palette_color(ctx):
     return out
 
 
+_STYLE_WORDS = {
+    "thin", "hairline", "extralight", "ultralight", "light", "regular", "book", "normal", "roman", "medium",
+    "semibold", "demibold", "bold", "extrabold", "ultrabold", "black", "heavy", "italic", "oblique",
+    "condensed", "narrow", "semi", "demi", "extra", "ultra",
+}  # fmt: skip
+# Symbol and icon fonts set single glyphs, not text: they are not a typeface choice.
+_SYMBOL_FONTS = {"symbol", "wingdings", "wingdings 2", "wingdings 3", "webdings", "marlett",
+                 "segoe ui symbol", "segoe ui emoji", "apple color emoji", "noto color emoji"}  # fmt: skip
+
+
+def font_family(face: str) -> str:
+    """'Inter SemiBold', 'Inter-Bold' and 'Inter' are one family: weights and styles are not."""
+    base, _, style = face.partition("-")
+    if style and all(w.lower() in _STYLE_WORDS for w in re.findall(r"[A-Z]?[a-z]+", style) or [style]):
+        face = base
+    words = face.split()
+    while len(words) > 1 and words[-1].lower() in _STYLE_WORDS:
+        words.pop()
+    return " ".join(words)
+
+
+@rule(
+    "OVS105",
+    "too-many-font-families",
+    "More typeface families in the deck than a consistent design uses",
+    "structure",
+    explanation="Counts the families text is actually set in -- stated, inherited from the layout, and the "
+    "theme's heading and body fonts -- with weights and styles of one family counted once. Kosslyn et al. "
+    "(2012) found fonts mixed arbitrarily in 37% of sampled decks. Symbol fonts are not counted. Unlike "
+    "OVS102 it needs no brand font set. Limit: `max-font-families` (default 2).",
+)
+def too_many_font_families(ctx):
+    first: dict[str, int] = {}
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            for r in shape.runs:
+                if r.face and r.face.lower() not in _SYMBOL_FONTS:
+                    first.setdefault(font_family(r.face), slide.number)
+    limit = ctx.settings.max_font_families
+    if len(first) <= limit:
+        return []
+    names = ", ".join(f"{f} (slide {n})" for f, n in sorted(first.items(), key=lambda kv: kv[1]))
+    return [finding(ctx, "OVS105", f"{len(first)} font families in the deck, over {limit}: {names}", None)]
+
+
+LABEL_WORDS = 4  # a paragraph shorter than this is a label, where caps or bold are a style choice
+
+
+@rule(
+    "OVS106",
+    "emphasis-overuse",
+    "A whole paragraph set in bold, italic or capitals",
+    "structure",
+    explanation="Emphasis works by contrast; a paragraph that is all bold, all italic or all capitals has "
+    "nothing to stand out from, and capitals read slower. Kosslyn et al. (2012) found it in 81% of sampled "
+    "decks. Paragraphs under four words (labels) and slide titles are exempt. Only stated bold and italic "
+    "count; capitals are the All Caps option or text typed in capitals. Reported once per text frame.",
+)
+def emphasis_overuse(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout or shape.placeholder in TITLE_PLACEHOLDERS:
+                continue
+            hit = next((p for p in shape.paragraphs if p.emphasis and len(p.text.split()) >= LABEL_WORDS), None)
+            if hit:
+                kinds = " and ".join(hit.emphasis)
+                message = f"a whole paragraph in {kinds} in '{shape.label}'"
+                out.append(finding(ctx, "OVS106", message, slide.number, clip(hit.text)))
+    return out
+
+
+@rule(
+    "OVS107",
+    "underline-not-link",
+    "Underlined text that is not a link",
+    "structure",
+    explanation="On a slide, underlining reads as a link; Kosslyn et al. (2012) found underlined non-links in "
+    "46% of sampled decks. A run with a hyperlink or a click action is a link. Reported once per text frame.",
+)
+def underline_not_link(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if shape.from_layout:
+                continue
+            hit = next((r for r in shape.runs if r.underline and not r.link and r.text.strip()), None)
+            if hit:
+                message = f"underlined text in '{shape.label}' that is not a link"
+                out.append(finding(ctx, "OVS107", message, slide.number, clip(hit.text)))
+    return out
+
+
 @rule(
     "OVS201",
     "empty-placeholder",

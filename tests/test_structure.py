@@ -511,3 +511,64 @@ def test_a_three_level_nest_is_too_deep(builder, make_deck):
     assert f.snippet == "Sub-sub-point"
     assert check("OVS209", make_deck(builder)) == []
     assert check("OVS211", make_deck(builder), Settings(max_bullet_depth=3)) == []
+
+
+def test_weights_and_styles_belong_to_one_family():
+    from overset.rules.structure import font_family
+
+    assert {font_family(f) for f in ("Inter", "Inter SemiBold", "Inter-Bold", "Inter Light Italic")} == {"Inter"}
+    assert font_family("Segoe UI Light") == "Segoe UI"
+    assert font_family("Source Sans Pro") == "Source Sans Pro"
+    assert font_family("Fira-Code") == "Fira-Code", "a hyphen before a non-style word is part of the name"
+
+
+def test_too_many_font_families_in_a_deck(builder, make_deck):
+    builder.text("Inherits the theme's body font")  # Calibri, from the theme
+    builder.text("A display face", y=2, font="Georgia")
+    builder.text("Bold weight of the same display face", y=3, font="Georgia Bold")
+    builder.text("✓", y=4, font="Wingdings")  # a symbol font is not a typeface choice
+    assert check("OVS105", make_deck(builder)) == []
+    builder.new_slide()
+    builder.text("A third family", font="Inter")
+    (f,) = check("OVS105", make_deck(builder))
+    assert f.slide is None
+    assert f.message == "3 font families in the deck, over 2: Calibri (slide 1), Georgia (slide 1), Inter (slide 2)"
+    assert check("OVS105", make_deck(builder), Settings(max_font_families=3)) == []
+
+
+def test_a_whole_paragraph_in_bold_italic_or_capitals_is_overused_emphasis(builder, make_deck):
+    bold = builder.text("Every word of this sentence is bold")
+    bold.text_frame.paragraphs[0].runs[0].font.bold = True
+    builder.text("THIS SENTENCE IS TYPED IN CAPITALS", y=2)
+    caps = builder.text("This one uses the all caps option", y=3)
+    caps.text_frame.paragraphs[0].runs[0]._r.get_or_add_rPr().set("cap", "all")
+    found = check("OVS106", make_deck(builder))
+    assert [f.message for f in found] == [
+        "a whole paragraph in bold in 'TextBox 1'",
+        "a whole paragraph in all caps in 'TextBox 2'",
+        "a whole paragraph in all caps in 'TextBox 3'",
+    ]
+
+
+def test_labels_titles_and_partial_emphasis_are_fine(builder, make_deck):
+    slide = builder.new_slide(layout=1)
+    slide.shapes.title.text = "QUARTERLY RESULTS FOR THE BOARD"  # a title may be set in capitals
+    builder.text("NEW PRODUCT", y=5)  # a short label
+    mixed = builder.text("Only one word here is bold", y=6)
+    p = mixed.text_frame.paragraphs[0]
+    p.runs[0].text = "Only one "
+    extra = p.add_run()
+    extra.text, extra.font.bold = "word", True
+    p.add_run().text = " here is bold"
+    assert check("OVS106", make_deck(builder)) == []
+
+
+def test_underlined_text_that_is_not_a_link_is_reported(builder, make_deck):
+    plain = builder.text("Underlined for emphasis")
+    plain.text_frame.paragraphs[0].runs[0].font.underline = True
+    link = builder.text("Our website", y=2)
+    run = link.text_frame.paragraphs[0].runs[0]
+    run.font.underline = True
+    run.hyperlink.address = "https://example.com"
+    (f,) = check("OVS107", make_deck(builder))
+    assert f.message == "underlined text in 'TextBox 1' that is not a link" and f.snippet == "Underlined for emphasis"

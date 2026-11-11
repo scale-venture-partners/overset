@@ -22,10 +22,12 @@ import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from lxml import etree
 from pptx import Presentation
 from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import MSO_AUTO_SIZE
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.oxml.ns import qn
 
 EMU_PER_PT = 12_700
@@ -72,6 +74,7 @@ class Paragraph:
     text: str
     level: int  # 0-based outline level
     bulleted: bool  # shows a bullet or a number, stated or inherited
+    emphasis: tuple[str, ...] = ()  # "bold", "italic", "all caps": set on every run of the paragraph
 
 
 @dataclass
@@ -81,6 +84,10 @@ class Run:
     font: str | None
     color: str | None  # "RRGGBB", only when stated as RGB
     bold: bool = False  # only when stated
+    italic: bool = False  # only when stated
+    underline: bool = False  # only when stated
+    link: bool = False  # a hyperlink or click action
+    face: str | None = None  # the font actually used: stated or inherited, theme fonts resolved
 
 
 @dataclass
@@ -237,6 +244,34 @@ class Styles:
 
     def __init__(self, prs):
         self.default = prs._element.find(qn("p:defaultTextStyle"))
+        self._themes: dict[int, dict[str, str]] = {}
+
+    def theme_fonts(self, master) -> dict[str, str]:
+        """The master's theme fonts: '+mj-lt' (headings) and '+mn-lt' (body) to their typefaces."""
+        if master is None:
+            return {}
+        if id(master) not in self._themes:
+            fonts = {}
+            try:
+                theme = etree.fromstring(master.part.part_related_by(RT.THEME).blob)
+                for key, tag in (("+mj-lt", "a:majorFont"), ("+mn-lt", "a:minorFont")):
+                    latin = theme.find(f".//{qn('a:fontScheme')}/{qn(tag)}/{qn('a:latin')}")
+                    if latin is not None and latin.get("typeface"):
+                        fonts[key] = latin.get("typeface")
+            except (KeyError, ValueError, etree.XMLSyntaxError):
+                pass
+            self._themes[id(master)] = fonts
+        return self._themes[id(master)]
+
+    @staticmethod
+    def font(chain: list, level: int) -> str | None:
+        """The Latin typeface a paragraph level inherits, as written (it may be a theme font)."""
+        for list_style in chain:
+            lvl = list_style.find(qn(f"a:lvl{level + 1}pPr")) if list_style is not None else None
+            latin = lvl.find(f"{qn('a:defRPr')}/{qn('a:latin')}") if lvl is not None else None
+            if latin is not None and latin.get("typeface"):
+                return latin.get("typeface")
+        return None
 
     def chain(self, shape, master) -> list:
         """The list styles to consult, nearest first."""
@@ -302,6 +337,26 @@ class Styles:
 _BULLET_TAGS = {qn("a:buChar"), qn("a:buAutoNum"), qn("a:buBlip")}
 
 
+def _caps(run) -> bool:
+    rpr = run._r.rPr
+    return rpr is not None and rpr.get("cap") == "all"
+
+
+def _emphasis(paragraph, text: str) -> tuple[str, ...]:
+    """The emphasis every run of a paragraph shares. All caps is the `cap="all"`
+    option, or text typed in capitals."""
+    runs = [r for r in paragraph.runs if r.text.strip()]
+    out = []
+    if runs and all(r.font.bold for r in runs):
+        out.append("bold")
+    if runs and all(r.font.italic for r in runs):
+        out.append("italic")
+    letters = [c for c in text if c.isalpha()]
+    if runs and (all(_caps(r) for r in runs) or (len(letters) > 1 and all(c.isupper() for c in letters))):
+        out.append("all caps")
+    return tuple(out)
+
+
 def _paragraphs(text_frame, chain: list | None) -> list[Paragraph]:
     out = []
     for paragraph in text_frame.paragraphs:
@@ -319,21 +374,37 @@ def _paragraphs(text_frame, chain: list | None) -> list[Paragraph]:
                     bullet = True
         if bullet is None:
             bullet = Styles.bulleted(chain, level) if chain else False
-        out.append(Paragraph(text, level, bullet))
+        out.append(Paragraph(text, level, bullet, _emphasis(paragraph, text)))
     return out
 
 
-def _runs(text_frame, chain: list | None = None) -> list[Run]:
+def _runs(text_frame, chain: list | None = None, theme: dict | None = None) -> list[Run]:
     scale = _font_scale(text_frame)
+    theme = theme or {}
     runs = []
     for paragraph in text_frame.paragraphs:
         inherited = Styles.size(chain, paragraph.level) if chain else None
+        inherited_font = (Styles.font(chain, paragraph.level) if chain else None) or "+mn-lt"
         for run in paragraph.runs:
             if not run.text.strip():
                 continue
             stated = run.font.size.pt if run.font.size is not None else inherited
             size = stated * scale if stated is not None else None
-            runs.append(Run(run.text, size, run.font.name, _rgb(run.font.color), bool(run.font.bold)))
+            written = run.font.name or inherited_font
+            rpr = run._r.rPr
+            runs.append(
+                Run(
+                    run.text,
+                    size,
+                    run.font.name,
+                    _rgb(run.font.color),
+                    bool(run.font.bold),
+                    italic=bool(run.font.italic),
+                    underline=bool(run.font.underline),
+                    link=rpr is not None and rpr.find(qn("a:hlinkClick")) is not None,
+                    face=theme.get(written[:6], None) if written.startswith("+") else written,
+                )
+            )
     return runs
 
 
@@ -398,7 +469,7 @@ def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None 
         out.text = shape.text_frame.text
         styles, master = ctx or (None, None)
         chain = styles.chain(shape, master) if styles else None
-        out.runs = _runs(shape.text_frame, chain)
+        out.runs = _runs(shape.text_frame, chain, styles.theme_fonts(master) if styles else None)
         out.paragraphs = _paragraphs(shape.text_frame, chain)
         out.auto_grow = shape.text_frame.auto_size == MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
     elif kind == "table":

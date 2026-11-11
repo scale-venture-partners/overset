@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New typography rules, from Kosslyn et al. (2012): OVS105 (too-many-font-families, more than
+  `max-font-families` = 2 families across the deck, counting inherited and theme fonts, with weights of
+  one family counted once), OVS106 (emphasis-overuse, a whole paragraph of four or more words in bold,
+  italic or capitals, outside titles) and OVS107 (underline-not-link). On by default.
 - New rules for bullet structure, from the most-violated measurable rules in Kosslyn et al. (2012):
   OVS209 (too-many-bullets, more than `max-bullets` = 4 items at one level of one list), OVS210
   (long-bullet, a render rule: a bullet on more than `max-bullet-lines` = 2 rendered lines) and OVS211
