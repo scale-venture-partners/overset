@@ -1,6 +1,8 @@
 """The real pipeline: LibreOffice, pdftotext, pdftoppm. Skipped where they
 aren't installed; CI installs them."""
 
+import re
+
 from conftest import needs_libreoffice
 from overset import cli
 from overset.engine import lint
@@ -85,6 +87,6 @@ def test_each_bullet_rule_fires_alone_on_its_own_case(builder, tmp_path):
     result = lint(builder.save(tmp_path / "deck.pptx"), Settings(select=("OVS209", "OVS210", "OVS211")))
     assert sorted((f.slide, f.code) for f in result.findings) == [(1, "OVS209"), (2, "OVS210"), (3, "OVS211")]
     (long,) = [f for f in result.findings if f.code == "OVS210"]
-    assert (
-        long.message == "a bullet in 'Content Placeholder 2' runs to 4 lines, over 2"
-    )  # 32pt in this placeholder: 4 rendered lines
+    # How many lines it wraps to depends on the fonts installed (4 here, 5 on CI's runner); it is well over 2.
+    lines = int(re.fullmatch(r"a bullet in 'Content Placeholder 2' runs to (\d+) lines, over 2", long.message)[1])
+    assert lines >= 3
