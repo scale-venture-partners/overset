@@ -9,6 +9,8 @@ from overset import render as render_mod
 from overset import settings as settings_mod
 from overset.settings import Settings
 
+NO_TITLES = ("OVS204",)  # these decks are blank slides with no title placeholder: not what they test
+
 
 def test_defaults_skip_off_by_default_and_vision_rules():
     codes = Settings().active_codes()
@@ -82,17 +84,17 @@ def test_usage_errors_exit_2(tmp_path, capsys):
 def test_findings_exit_1_and_clean_exits_0(builder, tmp_path, capsys):
     builder.text("Fine print", size=6)
     bad = builder.save(tmp_path / "bad.pptx")
-    assert cli.main([str(bad), "--no-render"]) == 1
+    assert cli.main([str(bad), "--no-render", "--ignore", "OVS204"]) == 1
     out = capsys.readouterr().out
     assert "slide 1: OVS101 text at 6.0pt" in out and "1 finding in 1 deck (OVS101 ×1)." in out
-    assert cli.main([str(bad), "--no-render", "--ignore", "OVS101"]) == 0
+    assert cli.main([str(bad), "--no-render", "--ignore", "OVS101,OVS204"]) == 0
     assert "All clear: 1 deck checked." in capsys.readouterr().out
 
 
 def test_json_output_is_one_object_per_deck(builder, tmp_path, capsys):
     builder.text("Fine print", size=6)
     bad = builder.save(tmp_path / "bad.pptx")
-    assert cli.main([str(bad), "--no-render", "--format", "json"]) == 1
+    assert cli.main([str(bad), "--no-render", "--ignore", "OVS204", "--format", "json"]) == 1
     (report,) = json.loads(capsys.readouterr().out)
     assert report["slides"] == 1 and report["rendered"] is False
     (f,) = report["findings"]
@@ -105,7 +107,7 @@ def test_a_failed_render_skips_those_rules_and_says_so(builder, tmp_path, monkey
 
     monkeypatch.setattr(render_mod, "render", fail)
     builder.text("Fine print", size=6)
-    result = engine.lint(builder.save(tmp_path / "d.pptx"), Settings())
+    result = engine.lint(builder.save(tmp_path / "d.pptx"), Settings(ignore=NO_TITLES))
     assert [f.code for f in result.findings] == ["OVS101"], "structure rules still run"
     assert "OVS001" in result.skipped and not result.rendered
     assert "did not run: LibreOffice (soffice) is not installed" in result.notes[0]

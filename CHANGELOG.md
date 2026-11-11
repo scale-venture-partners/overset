@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `--vision` with a model id the API rejects now stops with a clear message naming the model and the
+  `vision-model` setting (exit 2), instead of a generic `DecisionError: HTTP 404` for the deck.
+- OVS003 sweeps rendered words top to bottom instead of comparing every pair, so dense slides
+  (tables, appendix pages) are checked in a fraction of the time. Findings are unchanged.
+- New rule OVS206 (missing-alt-text): a picture (including video), chart, SmartArt graphic or embedded
+  object with no alt text, or alt text that is only a file name (`IMG_1234.jpg`, `Picture 3`, a
+  screenshot's default name). Visuals marked decorative in PowerPoint, and the layout's and master's
+  own, are exempt. On by default.
+- New rules OVS204 (missing-slide-title) and OVS205 (duplicate-slide-title), the two title checks in
+  Microsoft's Accessibility Checker. Only a title placeholder counts as a title; hidden slides are
+  skipped. An empty title placeholder is now reported as OVS204 instead of OVS201 (OVS201 still
+  reports it if OVS204 is ignored). Both are on by default, so decks of untitled slides will report
+  more findings.
 - OVS104 now uses WCAG 2.2's size-dependent contrast thresholds: `min-contrast` defaults to 4.5
   (was 3.0) for body text, and the new `min-contrast-large` (3.0) applies to text of 18pt and up,
   or 14pt bold. Text whose size isn't known is held to 4.5:1. Expect more OVS104 findings on

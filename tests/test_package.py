@@ -8,6 +8,8 @@ from overset import package
 from overset.engine import lint
 from overset.settings import Settings
 
+NO_TITLES = ("OVS204",)  # these decks are blank slides with no title placeholder: not what they test
+
 
 def rewrite(src, dst, *, drop=(), replace=None, add=None):
     """Copy a .pptx, dropping parts, editing some, adding others."""
@@ -92,13 +94,13 @@ def test_a_loadable_deck_with_a_package_problem_still_gets_every_rule(builder, t
             )
         },
     )
-    codes = sorted(f.code for f in lint(stale, Settings(render=False)).findings)
+    codes = sorted(f.code for f in lint(stale, Settings(render=False, ignore=NO_TITLES)).findings)
     assert codes == ["OVS000", "OVS101"]
 
 
 def test_the_package_rule_can_be_ignored(sound, tmp_path):
     broken = rewrite(sound, tmp_path / "jpg.pptx", add={"ppt/media/image9.jpg": b"\xff\xd8"})
-    assert lint(broken, Settings(render=False, ignore=("OVS000",))).findings == []
+    assert lint(broken, Settings(render=False, ignore=("OVS000", *NO_TITLES))).findings == []
 
 
 def test_an_oversized_xml_part_is_reported_not_parsed(tmp_path, monkeypatch):

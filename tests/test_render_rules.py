@@ -320,3 +320,31 @@ def test_the_large_text_threshold_is_configurable(builder, make_deck, fake_rende
     render = fake_render(words, color="white", dpi=60, draw=_paint(GREY, (1.2, 1.1, 0.6, 0.3)))
     (f,) = check("OVS104", make_deck(builder), render, Settings(min_contrast_large=4.0))
     assert f.message.endswith("under 4:1")
+
+
+def _all_pairs(inks, owners):
+    """The original O(n^2) scan, as the reference colliding_pairs must match."""
+    hits = {}
+    for i in range(len(inks)):
+        for j in range(i + 1, len(inks)):
+            if owners[i] == owners[j]:
+                continue
+            overlap = inks[i].intersection(inks[j])
+            if overlap and overlap > 0.05 * min(inks[i].area, inks[j].area):
+                hits.setdefault(tuple(sorted((owners[i], owners[j]))), (i, j))
+    return hits
+
+
+def test_the_collision_sweep_finds_exactly_what_comparing_every_pair_finds():
+    import random
+
+    from overset.deck import Box
+    from overset.rules.render_rules import colliding_pairs
+
+    rng = random.Random(7)
+    for _ in range(200):
+        n = rng.randint(0, 60)
+        # Small slide, big words: plenty of overlaps, ties in y, and touching edges.
+        inks = [Box(rng.randint(0, 40), rng.randint(0, 40), rng.randint(1, 15), rng.randint(1, 8)) for _ in range(n)]
+        owners = [rng.choice("ABCD") for _ in range(n)]
+        assert colliding_pairs(inks, owners) == _all_pairs(inks, owners)

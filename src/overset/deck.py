@@ -90,6 +90,9 @@ class Shape:
     image_aspect: float | None = None  # pictures: aspect of the visible (cropped) source
     from_layout: bool = False  # drawn by the layout or master, not the slide
     group: str | None = None  # the outermost group this shape sits in, if any
+    graphic: str | None = None  # a visual that needs alt text: "picture", "chart", "SmartArt graphic", "object"
+    alt_text: str = ""  # the shape's description (cNvPr/@descr)
+    decorative: bool = False  # marked decorative in PowerPoint, so it needs no alt text
 
     @property
     def label(self) -> str:
@@ -98,11 +101,20 @@ class Shape:
         return f"{self.group} > {self.name}" if self.group else self.name
 
 
+TITLE_PLACEHOLDERS = ("TITLE", "CENTER_TITLE")
+
+
 @dataclass
 class Slide:
     number: int  # 1-based
     layout: str
     shapes: list[Shape]
+    hidden: bool = False  # hidden in the slide show
+
+    @property
+    def title(self) -> Shape | None:
+        """The slide's title placeholder, if it has one."""
+        return next((s for s in self.shapes if s.placeholder in TITLE_PLACEHOLDERS and not s.from_layout), None)
 
     @property
     def text_shapes(self) -> list[Shape]:
@@ -285,6 +297,34 @@ def _picture_aspect(picture) -> float | None:
     return visible_w / visible_h
 
 
+_GRAPHIC_DATA = {
+    "http://schemas.openxmlformats.org/drawingml/2006/chart": "chart",
+    "http://schemas.openxmlformats.org/drawingml/2006/diagram": "SmartArt graphic",
+    "http://schemas.openxmlformats.org/presentationml/2006/ole": "object",
+}
+_DECORATIVE = "http://schemas.microsoft.com/office/drawing/2017/decorative"
+
+
+def _graphic(element) -> str | None:
+    """What kind of visual a shape element is, if it is one a reader needs described.
+    Pictures include picture placeholders and video; a table is text, so it is not one."""
+    if element.tag == qn("p:pic"):
+        return "picture"
+    if element.tag == qn("p:graphicFrame"):
+        data = element.find(f"{qn('a:graphic')}/{qn('a:graphicData')}")
+        return _GRAPHIC_DATA.get(data.get("uri")) if data is not None else None
+    return None
+
+
+def _description(element) -> tuple[str, bool]:
+    """The shape's alt text, and whether PowerPoint marks it decorative."""
+    cnvpr = element.find(f"./*/{qn('p:cNvPr')}")
+    if cnvpr is None:
+        return "", False
+    decorative = any(el.get("val") in ("1", "true") for el in cnvpr.iter(f"{{{_DECORATIVE}}}decorative"))
+    return cnvpr.get("descr") or "", decorative
+
+
 def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None = None, ctx=None) -> Shape:
     kind = "other"
     if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
@@ -310,6 +350,9 @@ def _shape(shape, from_layout=False, t: Transform = IDENTITY, group: str | None 
         out.runs = [r for c in cells for r in _runs(c)]
     if kind == "picture":
         out.image_aspect = _picture_aspect(shape)
+    out.graphic = _graphic(shape._element)
+    if out.graphic:
+        out.alt_text, out.decorative = _description(shape._element)
     return out
 
 
@@ -336,5 +379,6 @@ def load(path: str | Path) -> Deck:
         # a renderer's words have to be attributable to some frame.
         for inherited in (slide.slide_layout.shapes, slide.slide_layout.slide_master.shapes):
             shapes += _shapes([s for s in inherited if not s.is_placeholder], from_layout=True, ctx=ctx)
-        slides.append(Slide(number, slide.slide_layout.name, shapes))
+        hidden = slide._element.get("show") in ("0", "false")
+        slides.append(Slide(number, slide.slide_layout.name, shapes, hidden))
     return Deck(path, int(prs.slide_width), int(prs.slide_height), slides)

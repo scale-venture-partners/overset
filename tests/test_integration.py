@@ -6,12 +6,14 @@ from overset import cli
 from overset.engine import lint
 from overset.settings import Settings
 
+NO_TITLES = ("OVS204",)  # these decks are blank slides with no title placeholder: not what they test
+
 
 @needs_libreoffice
 def test_a_title_pushed_off_the_top_is_caught_end_to_end(builder, tmp_path):
     builder.text("A title running off the top", x=1, y=-0.6, w=8, h=1.2, size=40)
     builder.text("Clean body copy that fits its frame.", x=1, y=3, w=8, h=1, size=20)
-    result = lint(builder.save(tmp_path / "deck.pptx"), Settings(), workdir=tmp_path / "render")
+    result = lint(builder.save(tmp_path / "deck.pptx"), Settings(ignore=NO_TITLES), workdir=tmp_path / "render")
     codes = sorted({f.code for f in result.findings})
     assert codes == ["OVS001", "OVS004"]
     off = next(f for f in result.findings if f.code == "OVS001")
@@ -29,7 +31,7 @@ def test_a_fixed_frame_too_small_for_its_text_overflows(builder, tmp_path):
         h=0.5,
         size=20,
     )
-    result = lint(builder.save(tmp_path / "deck.pptx"), Settings())
+    result = lint(builder.save(tmp_path / "deck.pptx"), Settings(ignore=NO_TITLES))
     assert [f.code for f in result.findings] == ["OVS002"]
 
 
@@ -40,7 +42,7 @@ def test_a_clean_deck_is_clean_and_the_contact_sheet_is_made(builder, tmp_path, 
     builder.new_slide()
     builder.text("Second slide", x=1, y=1, w=6, h=1, size=36)
     deck = builder.save(tmp_path / "deck.pptx")
-    assert cli.main([str(deck), "--keep-render", str(tmp_path / "r")]) == 0
+    assert cli.main([str(deck), "--keep-render", str(tmp_path / "r"), "--ignore", "OVS204"]) == 0
     assert "All clear" in capsys.readouterr().out
 
     from overset import deck as deck_mod
