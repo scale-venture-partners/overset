@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Calibration tooling: `scripts/label_corpus.py` writes a labelling sheet (reported and unreported slides
+  per rule) and `scripts/score_labels.py` scores overset against it, per rule and across a threshold
+  (docs/labelling.md, #20).
 - Measured counterparts for the vision rules, off by default until calibrated: OVS008 (cluttered-slide:
   edge density more than `clutter-spread` = 3 MADs above the deck's median), OVS009 (busy-behind-text:
   edge density of a text frame's background, words masked out, over `max-background-busyness` = 0.19),

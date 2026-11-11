@@ -247,4 +247,7 @@ uv run --group corpus scripts/fetch_corpus.py
 uv run scripts/run_corpus.py
 ```
 
+To measure the rules, [docs/labelling.md](docs/labelling.md) labels corpus slides and scores overset's
+precision and recall against them.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.
