@@ -70,3 +70,43 @@ def test_text_that_only_fits_because_libreoffice_shrinks_it_is_caught(builder, t
     as_powerpoint = lint(deck, Settings(select=("OVS002",)))
     assert as_libreoffice.findings == [], "LibreOffice shrinks it to fit"
     assert [f.code for f in as_powerpoint.findings] == ["OVS002"], "PowerPoint shows it at full size"
+
+
+def _shrunk_body(builder, paragraphs, font_scale):
+    """A content placeholder whose text inherits its size (32pt, from the master's
+    bodyStyle), stored as shrunk to `font_scale` percent, the way PowerPoint saves it."""
+    from pptx.oxml.ns import qn
+
+    slide = builder.new_slide(layout=1)
+    slide.shapes.title.text = "A title"
+    body = slide.placeholders[1]
+    tf = body.text_frame
+    tf.text = paragraphs[0]
+    for text in paragraphs[1:]:
+        tf.add_paragraph().text = text
+    body_pr = tf._txBody.bodyPr
+    for child in list(body_pr):
+        body_pr.remove(child)
+    body_pr.append(body_pr.makeelement(qn("a:normAutofit"), {"fontScale": str(round(font_scale * 1000))}))
+    return body
+
+
+def test_an_inherited_size_is_stated_and_then_scaled(builder, tmp_path):
+    _shrunk_body(builder, ["First point", "Second point"], font_scale=62.5)
+    src = builder.save(tmp_path / "deck.pptx")
+    out = as_powerpoint_shows_it(src, tmp_path / "frozen.pptx")
+    with zipfile.ZipFile(out) as z:
+        slide = z.read("ppt/slides/slide1.xml").decode()
+    body = slide[slide.index("First point") - 400 :]
+    assert "normAutofit" not in slide
+    # 32pt inherited x 62.5% = 20pt, on both runs and both end-of-paragraph marks
+    assert body.count('sz="2000"') == 4, body
+    assert 'sz="3200"' not in slide
+
+
+@needs_libreoffice
+def test_inherited_text_that_powerpoint_shrank_is_not_a_false_overflow(builder, tmp_path):
+    # Ten 32pt lines don't fit the content placeholder; at the stored 50% they do.
+    _shrunk_body(builder, [f"Point number {i}" for i in range(1, 11)], font_scale=50)
+    deck = builder.save(tmp_path / "deck.pptx")
+    assert lint(deck, Settings(select=("OVS002",))).findings == []

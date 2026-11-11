@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from overset.deck import Box, Deck
+from overset.deck import Box, Deck, Styles
 
 SOFFICE_CANDIDATES = ("soffice", "libreoffice", "/Applications/LibreOffice.app/Contents/MacOS/soffice")
 DEFAULT_DPI = 110
@@ -184,11 +184,68 @@ def _freeze_body(body: str) -> str:
     return body
 
 
+def _shrunk(text_frame) -> bool:
+    from pptx.oxml.ns import qn
+
+    norm = text_frame._txBody.bodyPr.find(qn("a:normAutofit"))
+    return norm is not None and int(norm.get("fontScale") or 100_000) != 100_000
+
+
+def _text_shapes(shapes):
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+    for shape in shapes:
+        if shape.shape_type == MSO_SHAPE_TYPE.GROUP:
+            yield from _text_shapes(shape.shapes)
+        elif shape.has_text_frame:
+            yield shape
+
+
+def _inherited_sizes_stated(pptx: Path) -> dict[str, bytes]:
+    """Slide XML in which every shrunk text body states the sizes it inherits.
+
+    `_freeze_body` scales the `sz` it finds. Text that inherits its size -- from
+    the layout, the master or the presentation defaults -- has none, so it
+    would render at 100% while PowerPoint shows it at `fontScale`. Writing the
+    inherited size onto each run and end-of-paragraph mark first lets the
+    freeze scale it like any other. Returns only the slides that changed, by
+    part name.
+    """
+    from lxml import etree
+    from pptx import Presentation
+
+    prs = Presentation(str(pptx))
+    styles, changed = Styles(prs), {}
+    for slide in prs.slides:
+        master, touched = slide.slide_layout.slide_master, False
+        for shape in _text_shapes(slide.shapes):
+            if not _shrunk(shape.text_frame):
+                continue
+            chain = styles.chain(shape, master)
+            for paragraph in shape.text_frame.paragraphs:
+                size = Styles.size(chain, paragraph.level)
+                if size is None:
+                    continue
+                sz = str(round(size * 100))
+                p = paragraph._p
+                targets = [r.get_or_add_rPr() for r in p.r_lst] + [p.get_or_add_endParaRPr()]
+                for rpr in targets:
+                    if rpr.get("sz") is None:
+                        rpr.set("sz", sz)
+                        touched = True
+        if touched:
+            changed[slide.part.partname.lstrip("/")] = etree.tostring(
+                slide.part._element, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
+    return changed
+
+
 def as_powerpoint_shows_it(pptx: Path, out: Path) -> Path:
     """A copy of the deck whose text sits where PowerPoint would put it."""
+    stated = _inherited_sizes_stated(pptx)
     with zipfile.ZipFile(pptx) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
         for item in src.infolist():
-            data = src.read(item.filename)
+            data = stated.get(item.filename) or src.read(item.filename)
             if re.match(r"ppt/(slides|slideLayouts|slideMasters)/[^/]+\.xml$", item.filename):
                 text = data.decode("utf-8")
                 data = _TX_BODY.sub(lambda b: _freeze_body(b.group(0)), text).encode("utf-8")

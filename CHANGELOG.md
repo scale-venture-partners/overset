@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rendering as PowerPoint now scales inherited font sizes too. A shrink-to-fit text body whose
+  text inherits its size was drawn at 100% instead of PowerPoint's stored `fontScale`, which
+  produced false OVS002/OVS003 findings on placeholder text.
 - OVS101 now checks text whose size is inherited rather than stated: from the shape's list style,
   the layout and master placeholders, the master's title/body/other text styles, or the
   presentation default. Most template text inherits its size, so expect more OVS101 findings.
