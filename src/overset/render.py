@@ -176,8 +176,10 @@ def _freeze_body(body: str) -> str:
             body,
         )
     if reduction:
+        # Line spacing as a percentage or in points (centipoints); spacing
+        # before and after a paragraph is not reduced.
         body = re.sub(
-            r'(<a:lnSpc><a:spcPct val=")(\d+)(")',
+            r'(<a:lnSpc><a:spc(?:Pct|Pts) val=")(\d+)(")',
             lambda r: f"{r.group(1)}{round(int(r.group(2)) * (1 - reduction))}{r.group(3)}",
             body,
         )
@@ -185,10 +187,13 @@ def _freeze_body(body: str) -> str:
 
 
 def _shrunk(text_frame) -> bool:
+    """PowerPoint stored a shrink for this body: a smaller font, tighter lines, or both."""
     from pptx.oxml.ns import qn
 
     norm = text_frame._txBody.bodyPr.find(qn("a:normAutofit"))
-    return norm is not None and int(norm.get("fontScale") or 100_000) != 100_000
+    if norm is None:
+        return False
+    return int(norm.get("fontScale") or 100_000) != 100_000 or int(norm.get("lnSpcReduction") or 0) != 0
 
 
 def _text_shapes(shapes):
@@ -202,16 +207,22 @@ def _text_shapes(shapes):
 
 
 def _inherited_sizes_stated(pptx: Path) -> dict[str, bytes]:
-    """Slide XML in which every shrunk text body states the sizes it inherits.
+    """Slide XML in which every shrunk text body states the sizes and line
+    spacing it inherits.
 
-    `_freeze_body` scales the `sz` it finds. Text that inherits its size -- from
-    the layout, the master or the presentation defaults -- has none, so it
-    would render at 100% while PowerPoint shows it at `fontScale`. Writing the
-    inherited size onto each run and end-of-paragraph mark first lets the
-    freeze scale it like any other. Returns only the slides that changed, by
-    part name.
+    `_freeze_body` scales the `sz` and `a:lnSpc` it finds. Text that inherits
+    them -- from the layout, the master or the presentation defaults -- has
+    neither, so it would render at 100% while PowerPoint shows it at
+    `fontScale` and `lnSpcReduction`. Writing the inherited values onto each
+    run, end-of-paragraph mark and paragraph first lets the freeze scale them
+    like stated ones; a paragraph that inherits no spacing gets 100%. Returns
+    only the slides that changed, by part name.
     """
+    import copy
+
     from lxml import etree
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
     from pptx import Presentation
 
     prs = Presentation(str(pptx))
@@ -223,11 +234,22 @@ def _inherited_sizes_stated(pptx: Path) -> dict[str, bytes]:
                 continue
             chain = styles.chain(shape, master)
             for paragraph in shape.text_frame.paragraphs:
+                p = paragraph._p
+                ppr = p.get_or_add_pPr()
+                if ppr.find(qn("a:lnSpc")) is None:
+                    inherited = Styles.line_spacing(chain, paragraph.level)
+                    if inherited is not None:
+                        spacing = copy.deepcopy(inherited)
+                    else:
+                        spacing = OxmlElement("a:lnSpc")
+                        spacing.append(OxmlElement("a:spcPct"))
+                        spacing[0].set("val", "100000")
+                    ppr.insert(0, spacing)  # lnSpc is the first child of a:pPr
+                    touched = True
                 size = Styles.size(chain, paragraph.level)
                 if size is None:
                     continue
                 sz = str(round(size * 100))
-                p = paragraph._p
                 targets = [r.get_or_add_rPr() for r in p.r_lst] + [p.get_or_add_endParaRPr()]
                 for rpr in targets:
                     if rpr.get("sz") is None:

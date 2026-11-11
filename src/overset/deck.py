@@ -237,6 +237,16 @@ class Styles:
         return [*styles, self.default]
 
     @staticmethod
+    def line_spacing(chain: list, level: int):
+        """The `a:lnSpc` element a paragraph level inherits, or None (100%)."""
+        for list_style in chain:
+            lvl = list_style.find(qn(f"a:lvl{level + 1}pPr")) if list_style is not None else None
+            spacing = lvl.find(qn("a:lnSpc")) if lvl is not None else None
+            if spacing is not None:
+                return spacing
+        return None
+
+    @staticmethod
     def size(chain: list, level: int) -> float | None:
         for list_style in chain:
             size = _level_size(list_style, level)
