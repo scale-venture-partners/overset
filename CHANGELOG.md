@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- OVS101 now checks text whose size is inherited rather than stated: from the shape's list style,
+  the layout and master placeholders, the master's title/body/other text styles, or the
+  presentation default. Most template text inherits its size, so expect more OVS101 findings.
+  Table text that doesn't state a size is still skipped.
 - Shapes inside groups are now checked. Each group is flattened into its children, placed on the
   slide through the group's transform, so OVS101/102/103 see grouped text, OVS202 sees grouped
   pictures, OVS004/OVS201 see grouped frames, and OVS002/OVS003 use each child as its own frame

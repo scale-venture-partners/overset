@@ -64,8 +64,9 @@ def frame_off_slide(ctx):
     "text-too-small",
     "Text set below the minimum size",
     "structure",
-    explanation="Uses the stated size times any shrink-on-overflow scale, so text PowerPoint shrank to fit "
-    "is caught at the size it is actually shown. Inherited sizes are not resolved and are skipped.",
+    explanation="Uses the run's size -- stated, or inherited from the layout, master or presentation "
+    "defaults -- times any shrink-on-overflow scale, so text PowerPoint shrank to fit is caught at the "
+    "size it is actually shown. Table text that doesn't state a size is skipped.",
 )
 def text_too_small(ctx):
     out, floor = [], ctx.settings.min_font_pt

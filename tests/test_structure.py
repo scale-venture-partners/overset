@@ -1,6 +1,6 @@
 """Rules that read only the .pptx."""
 
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 from overset.deck import Box
 from overset.engine import Context
@@ -190,3 +190,90 @@ def test_a_group_moved_past_the_edge_takes_its_text_with_it(builder, make_deck):
     card.name = "Card"
     (f,) = check("OVS004", make_deck(builder))
     assert f.message == "'Card > TextBox 2' extends past the slide edge"
+
+
+def _set_level_size(list_style_parent, level, pt, tag="a:lstStyle"):
+    """State a size for a paragraph level in a list style, creating what's missing."""
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    style = list_style_parent if tag is None else list_style_parent.find(qn(tag))
+    if style is None:
+        style = OxmlElement(tag)
+        # a:lstStyle sits after a:bodyPr in a text body
+        list_style_parent.insert(1, style)
+    lvl = style.find(qn(f"a:lvl{level + 1}pPr"))
+    if lvl is None:
+        lvl = OxmlElement(f"a:lvl{level + 1}pPr")
+        style.append(lvl)
+    rpr = lvl.find(qn("a:defRPr"))
+    if rpr is None:
+        rpr = OxmlElement("a:defRPr")
+        lvl.append(rpr)
+    rpr.set("sz", str(int(pt * 100)))
+
+
+def _body_placeholder_text(builder, text, level=0):
+    slide = builder.new_slide(layout=1)  # Title and Content
+    slide.shapes.title.text = "A title"
+    body = slide.placeholders[1]
+    body.text_frame.text = text
+    body.text_frame.paragraphs[0].level = level
+    return slide, body
+
+
+def test_a_size_inherited_from_the_master_body_style_is_checked(builder, make_deck):
+    # The issue's case: a placeholder inheriting 9pt from the master's bodyStyle, level 2.
+    from pptx.oxml.ns import qn
+
+    _body_placeholder_text(builder, "Second-level point", level=1)
+    master = builder.prs.slide_masters[0]
+    body_style = master._element.find(qn("p:txStyles")).find(qn("p:bodyStyle"))
+    _set_level_size(body_style, 1, 9, tag=None)
+    (f,) = check("OVS101", make_deck(builder))
+    assert f.message == "text at 9.0pt, under 10pt" and f.snippet == "Second-level point"
+
+
+def test_inherited_sizes_resolve_nearest_first(builder, make_deck):
+    slide, body = _body_placeholder_text(builder, "Body text")
+    layout_body = slide.slide_layout.placeholders[1]
+
+    def size():
+        (slide_,) = make_deck(builder).slides
+        (run,) = [r for s in slide_.shapes if s.placeholder == "OBJECT" for r in s.runs]
+        return run.size_pt
+
+    assert size() == 32, "the default master's bodyStyle, level 1"
+    _set_level_size(layout_body.text_frame._txBody, 0, 20)
+    assert size() == 20, "the layout placeholder overrides the master"
+    _set_level_size(body.text_frame._txBody, 0, 8)
+    assert size() == 8, "the shape's own list style overrides the layout"
+    body.text_frame.paragraphs[0].runs[0].font.size = Pt(28)
+    assert size() == 28, "a stated size overrides everything"
+
+
+def test_a_title_inherits_the_title_style_and_a_text_box_the_presentation_default(builder, make_deck):
+    from pptx.oxml.ns import qn
+
+    slide = builder.new_slide(layout=1)
+    slide.shapes.title.text = "A title"
+    box = slide.shapes.add_textbox(Inches(1), Inches(5), Inches(4), Inches(1))
+    box.text_frame.text = "A note"
+    sizes = {s.text: s.runs[0].size_pt for s in make_deck(builder).slides[0].shapes if s.runs}
+    assert sizes == {"A title": 44, "A note": 18}
+    _set_level_size(builder.prs._element.find(qn("p:defaultTextStyle")), 0, 7, tag=None)
+    (f,) = check("OVS101", make_deck(builder))
+    assert f.message == "text at 7.0pt, under 10pt" and f.snippet == "A note"
+
+
+def test_shrink_to_fit_scales_an_inherited_size(builder, make_deck):
+    from pptx.oxml.ns import qn
+    from pptx.oxml.xmlchemy import OxmlElement
+
+    _, body = _body_placeholder_text(builder, "Shrunk body text")  # inherits 32pt
+    body_pr = body.text_frame._txBody.find(qn("a:bodyPr"))
+    norm = OxmlElement("a:normAutofit")
+    norm.set("fontScale", "25000")
+    body_pr.append(norm)
+    (f,) = check("OVS101", make_deck(builder))
+    assert f.message == "text at 8.0pt, under 10pt"
