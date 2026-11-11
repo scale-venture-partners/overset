@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New rule OVS206 (missing-alt-text): a picture (including video), chart, SmartArt graphic or embedded
+  object with no alt text, or alt text that is only a file name (`IMG_1234.jpg`, `Picture 3`, a
+  screenshot's default name). Visuals marked decorative in PowerPoint, and the layout's and master's
+  own, are exempt. On by default.
 - New rules OVS204 (missing-slide-title) and OVS205 (duplicate-slide-title), the two title checks in
   Microsoft's Accessibility Checker. Only a title placeholder counts as a title; hidden slides are
   skipped. An empty title placeholder is now reported as OVS204 instead of OVS201 (OVS201 still

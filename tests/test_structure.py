@@ -324,3 +324,74 @@ def test_hidden_slides_are_not_checked_for_titles(builder, make_deck):
     deck = make_deck(builder)
     assert deck.slides[1].hidden and not deck.slides[0].hidden
     assert check("OVS204", deck) == [] and check("OVS205", deck) == []
+
+
+def _alt(shape, text):
+    shape._element.find("./*/{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr").set("descr", text)
+
+
+def _chart(builder):
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+
+    data = CategoryChartData()
+    data.categories = ["2024", "2025"]
+    data.add_series("Revenue", (1.0, 2.0))
+    if builder.slide is None:
+        builder.new_slide()
+    return builder.slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(6), Inches(1), Inches(4), Inches(3), data
+    )
+
+
+def test_a_picture_with_no_alt_text_is_reported(builder, make_deck):
+    _alt(builder.picture(), "")
+    (f,) = check("OVS206", make_deck(builder))
+    assert f.message == "picture 'Picture 1' has no alt text"
+
+
+def test_alt_text_that_is_only_a_file_name_is_reported(builder, make_deck):
+    for name in ("IMG_1234.jpg", "IMG_1234", "Picture 3", "Screenshot 2026-11-11 at 09.14.22", "chart.PNG"):
+        b = type(builder)()
+        _alt(b.picture(), name)
+        (f,) = check("OVS206", make_deck(b, name="d.pptx"))
+        assert f.message == "picture 'Picture 1' has a file name for alt text" and f.snippet == name, name
+
+
+def test_real_alt_text_passes(builder, make_deck):
+    _alt(builder.picture(), "Revenue grew 40% year on year, led by enterprise")
+    _alt(builder.picture(y=4), "Screenshot of the billing dashboard at month end")
+    _alt(_chart(builder), "Column chart: revenue doubled from 2024 to 2025")
+    assert check("OVS206", make_deck(builder)) == []
+
+
+def test_a_chart_with_no_alt_text_is_reported(builder, make_deck):
+    _chart(builder)
+    (f,) = check("OVS206", make_deck(builder))
+    assert f.message.startswith("chart '") and f.message.endswith("has no alt text")
+
+
+def test_a_decorative_picture_needs_no_alt_text(builder, make_deck):
+    from lxml import etree
+
+    pic = builder.picture()
+    _alt(pic, "")
+    cnvpr = pic._element.find("./*/{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr")
+    cnvpr.append(
+        etree.fromstring(
+            '<a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+            '<a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}">'
+            '<adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/>'
+            "</a:ext></a:extLst>"
+        )
+    )
+    assert check("OVS206", make_deck(builder)) == []
+
+
+def test_a_picture_inside_a_group_needs_alt_text_and_a_table_does_not(builder, make_deck):
+    card = builder.group()
+    _alt(builder.picture(into=card), "")
+    card.name = "Card"
+    builder.slide.shapes.add_table(2, 2, Inches(1), Inches(4), Inches(4), Inches(1))
+    (f,) = check("OVS206", make_deck(builder))
+    assert f.message == "picture 'Card > Picture 2' has no alt text"

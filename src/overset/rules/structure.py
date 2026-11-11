@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from overset.deck import TITLE_PLACEHOLDERS
 from overset.rules.base import clip, finding, rule
 
@@ -248,6 +250,46 @@ def duplicate_slide_title(ctx):
             out.append(finding(ctx, "OVS205", f"same title as slide {first[key]}", slide.number, clip(text)))
         else:
             first[key] = slide.number
+    return out
+
+
+# Alt text that only names the file or the shape, as PowerPoint and cameras fill it in.
+_FILENAME_ALT = re.compile(
+    r"""^(?:
+        .*\.(?:png|jpe?g|gif|bmp|tiff?|svg|emf|wmf|webp|heic)       # a file name
+      | (?:img|dsc|dscn|pxl|photo)[\s_-]*[\d\s_:.-]*                  # a camera's name
+      | (?:screenshot|screen\ shot)[\d\s_:.,-]*(?:at[\d\s_:.,-]*)?(?:[ap]m)?  # macOS / Windows screenshots
+      | (?:picture|image|graphic|chart|diagram|object)\s*\d+          # a default shape name
+    )$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+@rule(
+    "OVS206",
+    "missing-alt-text",
+    "A picture, chart or graphic with no alt text",
+    "structure",
+    explanation="A screen reader has nothing to say for a visual without a description; Microsoft's "
+    "Accessibility Checker reports one as an error, including alt text that is only a file name. "
+    "Checks pictures (including video), charts, SmartArt and embedded objects on the slide, inside "
+    "groups too. Visuals marked decorative in PowerPoint, and the template's own (layout and master), "
+    "are exempt.",
+)
+def missing_alt_text(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            if not shape.graphic or shape.decorative or shape.from_layout:
+                continue
+            alt = " ".join(shape.alt_text.split())
+            if not alt:
+                message = f"{shape.graphic} '{shape.label}' has no alt text"
+            elif _FILENAME_ALT.match(alt):
+                message = f"{shape.graphic} '{shape.label}' has a file name for alt text"
+            else:
+                continue
+            out.append(finding(ctx, "OVS206", message, slide.number, clip(alt)))
     return out
 
 

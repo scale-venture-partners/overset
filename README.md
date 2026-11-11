@@ -79,6 +79,7 @@ overset --explain OVS002
 | OVS203 | structure | More words on a slide than an audience will read |
 | OVS204 | structure | A slide with no title (no title placeholder, or an empty one) |
 | OVS205 | structure | Two slides share a title |
+| OVS206 | structure | A picture, chart or graphic with no alt text, or only a file name for one |
 | OVS301 | structure | Two consecutive slides use the same layout *(off by default)* |
 | OVS401–406 | vision | Clutter, weak hierarchy, misalignment, text over busy images, monotonous sequences, a slide that doesn't belong *(opt-in)* |
 
