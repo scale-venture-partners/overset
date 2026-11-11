@@ -48,6 +48,9 @@ class Settings:
     max_colors: int = 6  # distinct text and fill colours on a slide
     align_tolerance_pt: float = 4.0  # OVS005: edges this close count as lined up
     min_balance: float = 0.05  # OVS006 (off by default): Ngo et al.'s balance, 0-1; the corpus's 10th percentile
+    clutter_spread: float = 3.0  # OVS008 (off by default): MADs above the deck's median edge density
+    max_background_busyness: float = 0.08  # OVS009 (off by default): edge density behind text
+    min_title_ratio: float = 1.0  # OVS111 (off by default): title size over the largest other text
     min_whitespace: float = 0.25  # OVS007 (off by default): share left empty; about the corpus's 10th percentile
     fonts: list[str] = field(default_factory=list)
     font_dirs: list[Path] = field(default_factory=list)
