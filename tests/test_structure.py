@@ -537,10 +537,10 @@ def test_too_many_font_families_in_a_deck(builder, make_deck):
 
 
 def test_a_whole_paragraph_in_bold_italic_or_capitals_is_overused_emphasis(builder, make_deck):
-    bold = builder.text("Every word of this sentence is bold")
+    bold = builder.text("Every single word of this rather long sentence of body text is set in bold")
     bold.text_frame.paragraphs[0].runs[0].font.bold = True
-    builder.text("THIS SENTENCE IS TYPED IN CAPITALS", y=2)
-    caps = builder.text("This one uses the all caps option", y=3)
+    builder.text("THIS WHOLE SENTENCE OF BODY TEXT HAS BEEN TYPED IN CAPITALS FROM START TO END", y=2)
+    caps = builder.text("This sentence of body text uses the all caps option for all of its words", y=3)
     caps.text_frame.paragraphs[0].runs[0]._r.get_or_add_rPr().set("cap", "all")
     found = check("OVS106", make_deck(builder))
     assert [f.message for f in found] == [
@@ -606,3 +606,42 @@ def test_a_groups_scale_does_not_scale_its_childrens_text_margins(builder, make_
     left = int(Inches(0.1))  # the default margin, unscaled
     assert shape.text_area.x - shape.box.x == left
     assert shape.text_area.w == shape.box.w - 2 * left
+
+
+def test_headings_sources_and_italic_quotations_are_not_overused_emphasis(builder, make_deck):
+    def styled(text, y, bold=False, italic=False):
+        run = builder.text(text, y=y, h=0.5).text_frame.paragraphs[0].runs[0]
+        run.font.bold, run.font.italic = bold, italic
+        return run
+
+    styled("The International Style of the 1920s to the 1970s", 0.5, bold=True)  # a heading: ten words
+    styled("Source: IMF, Developments in Exchange Rate Arrangements and Markets in 2024 and beyond", 1.2, italic=True)
+    styled(
+        "\u201cEstablished publishers have a strong motivation to hype claims of predation as a threat\u201d",
+        2,
+        italic=True,
+    )
+    assert check("OVS106", make_deck(builder)) == []
+    # The same quotation in bold is still emphasis.
+    styled(
+        "\u201cEstablished publishers have a strong motivation to hype claims of predation as a threat\u201d",
+        3,
+        bold=True,
+    )
+    (f,) = check("OVS106", make_deck(builder))
+    assert f.message == "a whole paragraph in bold in 'TextBox 4'"
+
+
+def test_missing_alt_text_is_reported_once_per_slide(builder, make_deck):
+    for i in range(3):
+        _alt(builder.picture(x=1 + 3 * i), "")
+    _alt(builder.picture(y=4), "IMG_0042.jpg")
+    _alt(builder.picture(x=5, y=4), "Team photo at the 2025 offsite")
+    builder.new_slide()
+    _alt(builder.picture(), "")
+    names = "'Picture 1', 'Picture 2', 'Picture 3', 'Picture 4'"
+    found = check("OVS206", make_deck(builder))
+    assert [(f.slide, f.message) for f in found] == [
+        (1, f"4 visuals need alt text (3 with none, 1 with a file name): {names}"),
+        (2, "picture 'Picture 1' has no alt text"),
+    ]

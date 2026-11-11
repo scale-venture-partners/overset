@@ -50,11 +50,11 @@ are picked at random, seeded, from those with at least three decks under the siz
 
 ## Baseline: overset on the corpus
 
-Structure rules only, after the #22 triage below. Counts are findings; "Decks" is how many decks have at
+Structure rules only, after the triage below. Counts are findings; "Decks" is how many decks have at
 least one.
 
 ```
-overset over 63 decks (without the render rules): 4362 findings; 63 of 63 decks have at least one.
+overset over 63 decks (without the render rules): 2554 findings; 63 of 63 decks have at least one.
 
 | Rule | Findings | Decks | Datacluster | Slides-Align | Zenodo10K |
 |---|---|---|---|---|---|
@@ -62,14 +62,14 @@ overset over 63 decks (without the render rules): 4362 findings; 63 of 63 decks 
 | OVS004 frame-off-slide | 53 | 20 | 0 | 2 | 51 |
 | OVS101 text-too-small | 231 | 22 | 97 | 29 | 105 |
 | OVS105 too-many-font-families | 21 | 21 | 0 | 8 | 13 |
-| OVS106 emphasis-overuse | 619 | 53 | 166 | 258 | 195 |
+| OVS106 emphasis-overuse | 108 | 28 | 38 | 14 | 56 |
 | OVS107 underline-not-link | 24 | 11 | 0 | 8 | 16 |
 | OVS201 empty-placeholder | 62 | 11 | 0 | 0 | 62 |
 | OVS202 image-distorted | 132 | 25 | 0 | 45 | 87 |
 | OVS203 too-many-words | 165 | 41 | 32 | 40 | 93 |
 | OVS204 missing-slide-title | 583 | 46 | 76 | 257 | 250 |
 | OVS205 duplicate-slide-title | 182 | 20 | 0 | 0 | 182 |
-| OVS206 missing-alt-text | 1978 | 56 | 64 | 1111 | 803 |
+| OVS206 missing-alt-text | 681 | 56 | 60 | 224 | 397 |
 | OVS207 table-without-header | 35 | 9 | 0 | 21 | 14 |
 | OVS209 too-many-bullets | 90 | 26 | 0 | 0 | 90 |
 | OVS211 bullet-depth | 22 | 7 | 0 | 0 | 22 |
@@ -102,3 +102,11 @@ were measurement artifacts rather than defects.
   left empty: what PowerPoint shows as "Click to add text" to anyone editing the deck.
 - **OVS101 (text too small): kept.** The 97 Datacluster findings are body and source text at 8.2-9.6pt,
   sizes shrink-to-fit reached, now measured since inherited sizes are resolved (#6). Real small text.
+- **OVS106 (emphasis overuse): 619 to 108.** Most findings were not body text: bold headings and
+  callouts in text boxes, italic source lines ("Source: IMF, ..."), italic quotations and closing
+  slides ("THANK YOU FOR WATCHING"). The rule now counts only paragraphs of more than ten words, and
+  exempts source, note and caption lines and italic quotations. What is left is whole sentences of body
+  text in bold or italic.
+- **OVS206 (missing alt text): 1,978 to 681, on by default.** Missing alt text is an error in
+  Microsoft's Accessibility Checker, so the rule stays on, but a slide of ten unlabelled icons is one
+  problem, not ten: it now reports once per slide, naming each visual.
