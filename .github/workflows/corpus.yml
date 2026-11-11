@@ -1,0 +1,54 @@
+name: Corpus
+
+# overset over the starter corpus (docs/corpus.md): a crash and regression check on real decks.
+# Manual only: it downloads about 190 MB the first time (cached afterwards).
+on:
+  workflow_dispatch:
+    inputs:
+      render:
+        description: "Also run the render rules (installs LibreOffice; much slower)"
+        type: boolean
+        default: false
+
+jobs:
+  corpus:
+    runs-on: nscloud-ubuntu-24.04-amd64-4x8
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache the decks
+        uses: actions/cache@v4
+        with:
+          path: data/pptx
+          key: corpus-${{ hashFiles('data/manifest.csv') }}
+      - name: Cache LibreOffice packages
+        if: inputs.render
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/apt-archives
+            ~/apt-lists
+          key: apt-libreoffice-${{ runner.os }}-v2
+          restore-keys: apt-libreoffice-${{ runner.os }}-
+      - name: Install LibreOffice and poppler
+        if: inputs.render
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        timeout-minutes: 15
+        run: .github/scripts/install-render-deps.sh ~/apt-archives ~/apt-lists
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - name: Sync
+        run: uv sync --group corpus
+      - name: Fetch the corpus
+        run: uv run --group corpus scripts/fetch_corpus.py
+      - name: Run overset over it
+        run: uv run scripts/run_corpus.py ${{ inputs.render && '--render' || '' }}
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corpus-results
+          path: data/results/

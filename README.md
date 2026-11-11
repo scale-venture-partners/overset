@@ -215,8 +215,16 @@ vision-brief = "House style the reviewer should know."
 ```console
 uv sync
 uv run pytest -q --cov     # integration tests skip without LibreOffice
-uv run ruff format src tests
-uv run ruff check src tests
+uv run ruff format src tests scripts
+uv run ruff check src tests scripts
+```
+
+To see what the rules do on real decks, fetch the starter corpus (63 openly licensed decks, about
+190 MB, never committed) and run overset over it; see [docs/corpus.md](docs/corpus.md):
+
+```console
+uv run --group corpus scripts/fetch_corpus.py
+uv run scripts/run_corpus.py
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.
