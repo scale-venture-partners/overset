@@ -122,8 +122,8 @@ def background_busyness(image, frame, words, dpi) -> float | None:
     default=False,
     explanation="Edge density of the background inside a text frame, with the words masked out: a "
     "photograph or pattern behind text makes it harder to read even when the contrast measured at the "
-    "letters (OVS104) passes. Reported above `max-background-busyness` (default 0.08, about the starter "
-    "corpus's 99th percentile). Off by default until calibrated.",
+    "letters (OVS104) passes. Reported above `max-background-busyness` (default 0.19, the starter "
+    "corpus's 99th percentile over 5,695 text frames). Off by default until calibrated.",
 )
 def busy_behind_text(ctx):
     from PIL import Image

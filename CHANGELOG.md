@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Measured counterparts for the vision rules, off by default until calibrated: OVS008 (cluttered-slide:
+  edge density more than `clutter-spread` = 3 MADs above the deck's median), OVS009 (busy-behind-text:
+  edge density of a text frame's background, words masked out, over `max-background-busyness` = 0.19),
+  OVS111 (weak-title-hierarchy: body text as large as the title) and OVS112 (off-style-slide: a font or
+  title size the rest of the deck doesn't use).
 - New layout rules from shape boxes, off by default until calibrated: OVS005 (misaligned: shapes whose
   edges line up with no other shape's within `align-tolerance-pt`, 4), OVS006 (unbalanced-layout: Ngo,
   Teo & Byrne's balance measure under `min-balance`, 0.05) and OVS007 (crowded-slide: less than
