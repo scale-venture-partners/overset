@@ -39,22 +39,21 @@ jobs:
       # Cache the downloaded .debs, not the installed files: restoring files
       # skips the packages' post-install scripts, and LibreOffice installed
       # that way crashes on its first conversion. apt installs from the cached
-      # archives and runs every script; only the download is skipped.
+      # archives and runs every script; only the download is skipped. The
+      # package lists are cached with them, so the job can still install when
+      # the runner can't reach the Ubuntu mirror (see the script).
       - name: Cache LibreOffice packages
         uses: actions/cache@v4
         with:
-          path: ~/apt-archives
-          key: apt-libreoffice-${{ runner.os }}-v1
+          path: |
+            ~/apt-archives
+            ~/apt-lists
+          key: apt-libreoffice-${{ runner.os }}-v2
       - name: Install LibreOffice and poppler
         env:
           DEBIAN_FRONTEND: noninteractive
         timeout-minutes: 15
-        run: |
-          mkdir -p ~/apt-archives/partial
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o Dir::Cache::Archives="$HOME/apt-archives" \
-            libreoffice-impress poppler-utils
-          sudo chown -R "$USER" ~/apt-archives
+        run: .github/scripts/install-render-deps.sh ~/apt-archives ~/apt-lists
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
