@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New rule OVS212 (reading-order): the order a screen reader reads a slide's shapes (their order in the
+  file) compared with the layout's, by rows or down columns, as Kendall's tau; reported under
+  `min-reading-order` (0, worse than random), and when the title isn't read first. On the starter corpus,
+  193 findings in 34 of 63 decks.
 - OVS106 (emphasis-overuse) now counts only paragraphs of more than ten words, and exempts source, note
   and caption lines and italic quotations; on the starter corpus, 619 findings became 108.
 - OVS206 (missing-alt-text) reports once per slide, naming each visual, instead of once per visual

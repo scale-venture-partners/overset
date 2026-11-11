@@ -542,3 +542,86 @@ def repeated_layout(ctx):
         if prev.layout == cur.layout:
             out.append(finding(ctx, "OVS301", f"same layout as slide {prev.number} ('{cur.layout}')", cur.number))
     return out
+
+
+def kendall_tau(order: list[int]) -> float:
+    """Kendall's tau between 0..n-1 and `order`: 1 for the same order, -1 for reversed."""
+    n = len(order)
+    if n < 2:
+        return 1.0
+    concordant = sum(1 for i in range(n) for j in range(i + 1, n) if order[i] < order[j])
+    pairs = n * (n - 1) // 2
+    return (2 * concordant - pairs) / pairs
+
+
+def _row_order(boxes) -> list[int]:
+    """Top to bottom, then left to right; shapes whose tops are within half the shorter one's
+    height of each other share a row."""
+    order = sorted(range(len(boxes)), key=lambda i: (boxes[i].y, boxes[i].x))
+    rows: list[list[int]] = []
+    for i in order:
+        row = rows[-1] if rows else None
+        if row and abs(boxes[i].y - boxes[row[0]].y) <= min(boxes[i].h, boxes[row[0]].h) / 2:
+            row.append(i)
+        else:
+            rows.append([i])
+    return [i for row in rows for i in sorted(row, key=lambda k: boxes[k].x)]
+
+
+def _column_order(boxes) -> list[int]:
+    """Left column to right column, top to bottom within each: shapes whose horizontal spans
+    overlap share a column. A slide in two columns is read down the first, then the second."""
+    columns: list[list[int]] = []
+    for i in sorted(range(len(boxes)), key=lambda k: boxes[k].x):
+        column = next(
+            (c for c in columns if any(boxes[i].x < boxes[k].right and boxes[k].x < boxes[i].right for k in c)), None
+        )
+        if column is None:
+            columns.append([i])
+        else:
+            column.append(i)
+    return [i for c in columns for i in sorted(c, key=lambda k: boxes[k].y)]
+
+
+def _readable(shape) -> bool:
+    """A shape a screen reader announces: text, or a visual that needs alt text; not the template's,
+    not decorative, not a footer, date or slide number."""
+    if shape.from_layout or shape.quiet_placeholder or shape.box is None or shape.decorative:
+        return False
+    return bool(shape.text.strip()) or bool(shape.graphic)
+
+
+@rule(
+    "OVS212",
+    "reading-order",
+    "A screen reader reads the slide in an order that does not follow its layout",
+    "structure",
+    explanation="A screen reader reads shapes in the order they were added (PowerPoint's Reading Order "
+    "pane), which can differ from what the eye sees. Microsoft's Accessibility Checker flags an illogical "
+    "reading order. The order is compared with the layout's -- by rows, or down columns for a multi-column "
+    "slide, whichever fits better -- using Kendall's tau, and reported under `min-reading-order` (default 0: "
+    "more pairs out of order than in). "
+    "A title that is not read first is reported too. Footers, dates, slide numbers, decorative visuals "
+    "and the template's own shapes are left out.",
+)
+def reading_order(ctx):
+    out, floor = [], ctx.settings.min_reading_order
+    for slide in ctx.deck.slides:
+        shapes = [s for s in slide.shapes if _readable(s)]
+        title = slide.title
+        if title in shapes and shapes[0] is not title:
+            n = shapes.index(title) + 1
+            out.append(finding(ctx, "OVS212", f"the title is read {_ordinal(n)}, not first", slide.number))
+        if len(shapes) < 3:
+            continue
+        boxes = [s.box for s in shapes]
+        tau = max(kendall_tau(_row_order(boxes)), kendall_tau(_column_order(boxes)))
+        if tau < floor:
+            first = ", ".join(f"'{s.label}'" for s in shapes[:3])
+            message = f"reading order follows the layout poorly (tau {tau:.2f}, under {floor:g}); read first: {first}"
+            out.append(finding(ctx, "OVS212", message, slide.number))
+    return out
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'tsnrhtdd'[(n // 10 % 10 != 1) * (n % 10 < 4) * n % 10 :: 4]}"

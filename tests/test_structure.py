@@ -1,5 +1,6 @@
 """Rules that read only the .pptx."""
 
+import pytest
 from pptx.util import Inches, Pt
 
 from overset.deck import Box
@@ -645,3 +646,54 @@ def test_missing_alt_text_is_reported_once_per_slide(builder, make_deck):
         (1, f"4 visuals need alt text (3 with none, 1 with a file name): {names}"),
         (2, "picture 'Picture 1' has no alt text"),
     ]
+
+
+def test_kendall_tau():
+    from overset.rules.structure import kendall_tau
+
+    assert kendall_tau([0, 1, 2, 3]) == 1.0
+    assert kendall_tau([3, 2, 1, 0]) == -1.0
+    assert kendall_tau([1, 0, 2, 3]) == pytest.approx(2 / 3)
+
+
+def test_a_title_read_last_is_reported(builder, make_deck):
+    slide = builder.new_slide(layout=5)  # Title Only
+    builder.text("First point", y=2)
+    builder.text("Second point", y=3)
+    title = slide.shapes.title
+    title.text = "Quarterly results"
+    slide.shapes._spTree.remove(title._element)  # move the title to the end of the reading order
+    slide.shapes._spTree.append(title._element)
+    messages = [f.message for f in check("OVS212", make_deck(builder))]
+    assert messages[0] == "the title is read 3rd, not first"
+    assert messages[1].startswith("reading order follows the layout poorly"), "and the slide as a whole reads upward"
+
+
+def test_two_columns_read_column_by_column_pass(builder, make_deck):
+    for x in (1, 7):  # left column top to bottom, then the right column
+        for y in (1, 2.5, 4, 5.5):
+            builder.text(f"Column {x} row {y}", x=x, y=y, w=5, h=1)
+    assert check("OVS212", make_deck(builder)) == []
+
+
+def test_a_row_of_cards_read_left_to_right_passes_and_a_shuffled_slide_does_not(builder, make_deck):
+    for x in (1, 4.5, 8):
+        builder.text(f"Card at {x}", x=x, y=2, w=3, h=3)
+    assert check("OVS212", make_deck(builder)) == []
+    builder.new_slide()
+    for x, y in [(8, 5), (1, 5), (8, 1), (4.5, 3), (1, 1)]:  # bottom-right first, top-left last
+        builder.text(f"Box {x},{y}", x=x, y=y, w=3, h=1)
+    (f,) = check("OVS212", make_deck(builder))
+    assert f.slide == 2 and f.message.startswith("reading order follows the layout poorly (tau -")
+
+
+def test_footers_and_decoration_do_not_count_toward_reading_order(builder, make_deck):
+    slide = builder.new_slide(layout=1)
+    slide.shapes.title.text = "Title"
+    slide.placeholders[1].text_frame.text = "Body"
+    builder.text("Footer text that a template would add last", y=7)
+    deck = make_deck(builder)
+    for shape in deck.slides[0].shapes:
+        if shape.name.startswith("TextBox"):
+            shape.quiet_placeholder = True  # stands in for a footer placeholder
+    assert check("OVS212", deck) == []

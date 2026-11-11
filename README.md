@@ -88,6 +88,7 @@ overset --explain OVS002
 | OVS209 | structure | A list with more than `max-bullets` (4) items at one level |
 | OVS210 | render | A bullet that renders on more than `max-bullet-lines` (2) lines |
 | OVS211 | structure | Bullets nested more than `max-bullet-depth` (2) levels deep |
+| OVS212 | structure | A screen reader's reading order doesn't follow the layout, or the title isn't read first |
 | OVS301 | structure | Two consecutive slides use the same layout *(off by default)* |
 | OVS401–406 | vision | Clutter, weak hierarchy, misalignment, text over busy images, monotonous sequences, a slide that doesn't belong *(opt-in)* |
 
@@ -197,6 +198,7 @@ max-bullets = 4                     # items at one level of one list
 max-bullet-lines = 2                # rendered lines per bullet
 max-bullet-depth = 2                # outline levels a list may use
 max-font-families = 2               # typeface families across the deck
+min-reading-order = 0.0             # Kendall's tau of reading order against layout (-1 to 1)
 min-contrast = 4.5                 # body text (WCAG 2.2 AA)
 min-contrast-large = 3.0           # 18pt and up, or 14pt bold
 tolerance-pt = 2.0

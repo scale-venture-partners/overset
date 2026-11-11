@@ -37,6 +37,7 @@ class Settings:
     max_bullet_lines: int = 2  # rendered lines per bullet
     max_bullet_depth: int = 2  # outline levels a list may use
     max_font_families: int = 2  # typeface families across the deck
+    min_reading_order: float = 0.0  # Kendall's tau of reading order against layout; below 0 is worse than random
     tolerance_pt: float = 2.0
     min_contrast: float = 4.5  # WCAG 2.2 SC 1.4.3: body text
     min_contrast_large: float = 3.0  # large text: at least 18pt, or 14pt bold
