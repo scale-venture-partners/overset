@@ -23,9 +23,9 @@ jobs:
       - name: Sync
         run: uv sync
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
       - name: Format
-        run: uv run ruff format --check src tests
+        run: uv run ruff format --check src tests scripts
       - name: Test
         run: uv run pytest -q --cov
 
