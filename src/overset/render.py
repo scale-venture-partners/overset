@@ -221,9 +221,9 @@ def _inherited_sizes_stated(pptx: Path) -> dict[str, bytes]:
     import copy
 
     from lxml import etree
+    from pptx import Presentation
     from pptx.oxml.ns import qn
     from pptx.oxml.xmlchemy import OxmlElement
-    from pptx import Presentation
 
     prs = Presentation(str(pptx))
     styles, changed = Styles(prs), {}

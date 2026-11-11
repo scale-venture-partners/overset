@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rendering as PowerPoint now applies a shrink's line-spacing reduction to paragraphs that don't
+  state their own spacing (they get their inherited spacing, or 100%, reduced), and to spacing
+  given in points. Before, those lines were drawn at full spacing: false OVS002 on shrunk text.
 - Rendering as PowerPoint now scales inherited font sizes too. A shrink-to-fit text body whose
   text inherits its size was drawn at 100% instead of PowerPoint's stored `fontScale`, which
   produced false OVS002/OVS003 findings on placeholder text.
