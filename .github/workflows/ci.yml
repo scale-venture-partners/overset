@@ -41,7 +41,8 @@ jobs:
       # that way crashes on its first conversion. apt installs from the cached
       # archives and runs every script; only the download is skipped. The
       # package lists are cached with them, so the job can still install when
-      # the runner can't reach the Ubuntu mirror (see the script).
+      # the runner can't reach the Ubuntu mirror (see the script). An older
+      # entry's .debs still save the download when there is no exact match.
       - name: Cache LibreOffice packages
         uses: actions/cache@v4
         with:
@@ -49,6 +50,7 @@ jobs:
             ~/apt-archives
             ~/apt-lists
           key: apt-libreoffice-${{ runner.os }}-v2
+          restore-keys: apt-libreoffice-${{ runner.os }}-
       - name: Install LibreOffice and poppler
         env:
           DEBIAN_FRONTEND: noninteractive
