@@ -44,21 +44,22 @@ def invalid_package(ctx):
     "frame-off-slide",
     "A text frame extends past the slide edge",
     "structure",
-    explanation="Measured from the file, not the render, so it holds even where a renderer clips. "
-    "Pictures are exempt: a full-bleed image is meant to reach the edge.",
+    explanation="Measured from the file, not the render, so it holds even where a renderer clips. Only "
+    "the part of the frame text can occupy counts -- the box less its inner margins -- so a frame "
+    "whose padding hangs over the edge is fine. A frame entirely off the slide is said so: it is "
+    "invisible in the slide show. Pictures are exempt: a full-bleed image is meant to reach the edge.",
 )
 def frame_off_slide(ctx):
-    out, tol = [], ctx.settings.tolerance_emu
+    out, tol, slide_box = [], ctx.settings.tolerance_emu, ctx.deck.frame
     for slide in ctx.deck.slides:
         for shape in slide.shapes:
-            if shape.from_layout or shape.kind != "text" or not shape.text.strip() or shape.box is None:
+            area = shape.text_area or shape.box
+            if shape.from_layout or shape.kind != "text" or not shape.text.strip() or area is None:
                 continue
-            if not ctx.deck.frame.contains(shape.box, tol):
-                out.append(
-                    finding(
-                        ctx, "OVS004", f"'{shape.label}' extends past the slide edge", slide.number, clip(shape.text)
-                    )
-                )
+            if slide_box.contains(area, tol):
+                continue
+            where = "is entirely off the slide" if not slide_box.intersection(area) else "extends past the slide edge"
+            out.append(finding(ctx, "OVS004", f"'{shape.label}' {where}", slide.number, clip(shape.text)))
     return out
 
 
@@ -273,17 +274,24 @@ def empty_placeholder(ctx):
     "image-distorted",
     "A picture stretched out of its aspect ratio",
     "structure",
-    explanation="Compares the frame's aspect with the visible (cropped) source image's.",
+    explanation="Compares the frame's aspect with the visible (cropped) source image's. A small image's "
+    "own aspect is only known to the nearest pixel -- a 20-pixel icon's to about 5% -- so distortion "
+    "within that rounding is not counted.",
 )
 def image_distorted(ctx):
     out, limit = [], ctx.settings.max_aspect_distortion
     for slide in ctx.deck.slides:
         for shape in slide.shapes:
-            if shape.kind != "picture" or not shape.image_aspect or not shape.box or shape.box.h <= 0:
+            if shape.kind != "picture" or not shape.image_size or not shape.box or shape.box.h <= 0:
                 continue
+            w, h = shape.image_size
             shown = shape.box.w / shape.box.h
-            distortion = abs(shown / shape.image_aspect - 1)
-            if distortion > limit:
+            distortion = abs(shown * h / w - 1)
+            # The source's true aspect lies anywhere within half a pixel each way; only distortion
+            # beyond that range is the frame's.
+            low, high = max(w - 0.5, 1e-9) / (h + 0.5), (w + 0.5) / max(h - 0.5, 1e-9)
+            beyond = abs(shown / min(max(shown, low), high) - 1)
+            if beyond > limit:
                 out.append(
                     finding(ctx, "OVS202", f"'{shape.label}' is stretched {distortion:.0%} out of shape", slide.number)
                 )

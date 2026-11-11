@@ -572,3 +572,37 @@ def test_underlined_text_that_is_not_a_link_is_reported(builder, make_deck):
     run.hyperlink.address = "https://example.com"
     (f,) = check("OVS107", make_deck(builder))
     assert f.message == "underlined text in 'TextBox 1' that is not a link" and f.snippet == "Underlined for emphasis"
+
+
+def test_distortion_within_a_small_images_pixel_rounding_is_not_counted(builder, make_deck):
+    # The same 4% stretch: within a 28x32 icon's rounding, but not a 2800x3200 photo's.
+    builder.picture(size=(28, 32), w=0.28 * 1.04, h=0.32)
+    builder.picture(size=(2800, 3200), y=3, w=2.8 * 1.04, h=3.2)
+    builder.picture(size=(773, 2), y=6.8, w=7.73, h=0.02 * 1.2)  # a 2-pixel rule: up to 25% taller is rounding
+    (f,) = check("OVS202", make_deck(builder))
+    assert f.message == "'Picture 2' is stretched 4% out of shape"
+
+
+def test_a_frame_whose_padding_hangs_over_the_edge_is_fine(builder, make_deck):
+    padded = builder.text("Fits", x=-0.05, w=4)  # 0.05in over the edge, inside the 0.1in left margin
+    bare = builder.text("Reaches", x=-0.05, y=3, w=4)
+    bare.text_frame.margin_left = 0
+    (f,) = check("OVS004", make_deck(builder))
+    assert f.message == "'TextBox 2' extends past the slide edge"
+    assert padded.left < 0
+
+
+def test_a_frame_entirely_off_the_slide_says_so(builder, make_deck):
+    builder.text("Parked speaker notes", x=14, y=1, w=3)
+    (f,) = check("OVS004", make_deck(builder))
+    assert f.message == "'TextBox 1' is entirely off the slide"
+
+
+def test_a_groups_scale_does_not_scale_its_childrens_text_margins(builder, make_deck):
+    card = builder.group()
+    builder.text("Inside a group", x=1, y=1, w=4, h=1, into=card)
+    _scale_group(card, 50, 50)  # child coordinates 50 times smaller than the slide's
+    (shape,) = make_deck(builder).slides[0].shapes
+    left = int(Inches(0.1))  # the default margin, unscaled
+    assert shape.text_area.x - shape.box.x == left
+    assert shape.text_area.w == shape.box.w - 2 * left

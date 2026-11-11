@@ -50,22 +50,22 @@ are picked at random, seeded, from those with at least three decks under the siz
 
 ## Baseline: overset on the corpus
 
-Structure rules only, at the commit that added the corpus. Counts are findings; "Decks" is how many decks
-have at least one.
+Structure rules only, after the #22 triage below. Counts are findings; "Decks" is how many decks have at
+least one.
 
 ```
-overset over 63 decks (without the render rules): 4567 findings; 63 of 63 decks have at least one.
+overset over 63 decks (without the render rules): 4362 findings; 63 of 63 decks have at least one.
 
 | Rule | Findings | Decks | Datacluster | Slides-Align | Zenodo10K |
 |---|---|---|---|---|---|
 | OVS000 invalid-package | 165 | 10 | 0 | 161 | 4 |
-| OVS004 frame-off-slide | 103 | 24 | 0 | 3 | 100 |
+| OVS004 frame-off-slide | 53 | 20 | 0 | 2 | 51 |
 | OVS101 text-too-small | 231 | 22 | 97 | 29 | 105 |
 | OVS105 too-many-font-families | 21 | 21 | 0 | 8 | 13 |
 | OVS106 emphasis-overuse | 619 | 53 | 166 | 258 | 195 |
 | OVS107 underline-not-link | 24 | 11 | 0 | 8 | 16 |
 | OVS201 empty-placeholder | 62 | 11 | 0 | 0 | 62 |
-| OVS202 image-distorted | 287 | 25 | 0 | 199 | 88 |
+| OVS202 image-distorted | 132 | 25 | 0 | 45 | 87 |
 | OVS203 too-many-words | 165 | 41 | 32 | 40 | 93 |
 | OVS204 missing-slide-title | 583 | 46 | 76 | 257 | 250 |
 | OVS205 duplicate-slide-title | 182 | 20 | 0 | 0 | 182 |
@@ -77,13 +77,28 @@ overset over 63 decks (without the render rules): 4567 findings; 63 of 63 decks 
 Rules with no findings: OVS102, OVS103, OVS208, OVS301.
 ```
 
-No deck made overset crash. Observations for #22:
+No deck made overset crash.
 
-- **OVS106 (emphasis-overuse)** fires on most decks. A sample of its findings shows real overuse, and
-  also italic source lines ("Source: IMF, ...") and bold text boxes used as headings, which the rule
-  only exempts when they are title placeholders. Worth narrowing before it stays on by default.
-- **OVS206 (missing-alt-text)** dominates, with about a quarter of its findings for alt text that is a
-  file name. That matches Microsoft's checker, but on a corpus of decks nobody wrote alt text for it
-  is mostly a count of pictures.
-- **OVS000** is almost all Slides-Align, as in #22's survey: parts declared in `[Content_Types].xml`
-  but missing from the package.
+## Triage (#22)
+
+Each rule that fired a lot was checked against a sample of its findings, and fixed where the findings
+were measurement artifacts rather than defects.
+
+- **OVS000 (invalid package): kept as an error.** Almost all from Slides-Align: parts declared in
+  `[Content_Types].xml` but missing from the package. A deck that lists parts it does not contain is a
+  broken package, whatever PowerPoint tolerates.
+- **OVS202 (image distorted): 287 to 132.** Over half the findings were tiny images (icons of 20-40
+  pixels, 2-pixel rules) whose aspect ratio is only known to the nearest pixel: a 28x32 icon's to about
+  4%, a 2-pixel line's to 25-33%. Distortion within that rounding is no longer counted. Of the rest, 85
+  are stretched 10% or more, all PNG or JPEG. Some are decorative template art (abstract waves squeezed
+  into a corner), where the stretch is real but invisible; the rule cannot tell those from photos. The
+  2% tolerance stays: only 20 findings fall between 2% and 5% on images large enough to measure, a set
+  small enough to label by hand for #20.
+- **OVS004 (frame off slide): 103 to 53.** Half the findings were frames less than 10pt past the edge,
+  where only the frame's inner margin (0.1in by default) overhung; the text could not reach the edge.
+  The rule now tests the area text can occupy. Frames entirely off the slide, invisible in the slide
+  show (often parked notes), are reported as such.
+- **OVS201 (empty placeholder): kept.** The sample is content, body, subtitle and picture placeholders
+  left empty: what PowerPoint shows as "Click to add text" to anyone editing the deck.
+- **OVS101 (text too small): kept.** The 97 Datacluster findings are body and source text at 8.2-9.6pt,
+  sizes shrink-to-fit reached, now measured since inherited sizes are resolved (#6). Real small text.
