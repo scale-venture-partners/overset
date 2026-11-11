@@ -697,3 +697,51 @@ def test_footers_and_decoration_do_not_count_toward_reading_order(builder, make_
         if shape.name.startswith("TextBox"):
             shape.quiet_placeholder = True  # stands in for a footer placeholder
     assert check("OVS212", deck) == []
+
+
+def test_the_palette_can_be_matched_perceptually(builder, make_deck):
+    # Close in RGB but visibly different, and far in RGB but indistinguishable.
+    builder.text("Dark teal", color="001420")
+    builder.text("Bright cyan", y=2, color="1EE0E0")
+    palette = ["002020", "00E0E0"]
+    by_rgb = check("OVS103", make_deck(builder), Settings(palette=palette))
+    assert [f.message for f in by_rgb] == ["#1EE0E0 is not in the brand palette"]
+    by_eye = check("OVS103", make_deck(builder), Settings(palette=palette, palette_delta_e=5))
+    assert [f.message for f in by_eye] == ["#001420 is not in the brand palette"]
+
+
+def test_too_many_colours_on_a_slide(builder, make_deck):
+    colours = ["111111", "C0392B", "2471A3", "229954", "D68910", "7D3C98"]
+    for i, c in enumerate(colours):
+        builder.text(f"Colour {i}", y=0.5 + i, color=c)
+    builder.text("A near-identical shade", y=6.6, color="121212")  # counts with #111111
+    assert check("OVS108", make_deck(builder)) == []
+    builder.text("A seventh colour", x=7, color="17A589")
+    (f,) = check("OVS108", make_deck(builder))
+    assert f.message.startswith("7 colours, over 6: #111111")
+
+
+def test_saturated_blue_text_is_reported_and_navy_is_not(builder, make_deck):
+    builder.text("Pure blue text", color="0000FF")
+    builder.text("Navy text", y=2, color="1F3A5F")
+    (f,) = check("OVS109", make_deck(builder))
+    assert f.message == "text in saturated blue #0000FF in 'TextBox 1'" and f.snippet == "Pure blue text"
+
+
+def test_red_and_blue_meeting_are_reported(builder, make_deck):
+    from pptx.dml.color import RGBColor
+
+    def filled(box, hex_color):
+        box.fill.solid()
+        box.fill.fore_color.rgb = RGBColor.from_string(hex_color)
+        return box
+
+    filled(builder.text("Red on blue", color="E00000"), "0010E0")
+    filled(builder.text("Red box", x=1, y=3, w=2, h=1), "E00000")
+    filled(builder.text("Blue box", x=3, y=3, w=2, h=1), "0010E0")  # touches the red one
+    filled(builder.text("Far box", x=8, y=3, w=2, h=1), "0010E0")  # well away from it
+    messages = [f.message for f in check("OVS110", make_deck(builder))]
+    assert messages == [
+        "#E00000 text on a #0010E0 fill in 'TextBox 1'",
+        "'TextBox 2' (#E00000) and 'TextBox 3' (#0010E0) meet",
+    ]

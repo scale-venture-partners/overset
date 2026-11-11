@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- New colour rules: OVS108 (too-many-colors, more than `max-colors` = 6 distinct stated text and fill
+  colours on a slide), OVS109 (saturated-blue-text) and OVS110 (red-blue-adjacent: red text on blue or
+  touching red and blue shapes). On by default.
+- OVS103 can match the palette perceptually: set `palette-delta-e` (CIEDE2000) to use it instead of
+  `palette-tolerance`'s RGB distance, which keeps its meaning.
 - New rule OVS212 (reading-order): the order a screen reader reads a slide's shapes (their order in the
   file) compared with the layout's, by rows or down columns, as Kendall's tau; reported under
   `min-reading-order` (0, worse than random), and when the title isn't read first. On the starter corpus,

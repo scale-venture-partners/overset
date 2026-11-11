@@ -43,7 +43,9 @@ class Settings:
     min_contrast_large: float = 3.0  # large text: at least 18pt, or 14pt bold
     max_aspect_distortion: float = 0.02
     palette: list[str] = field(default_factory=list)
-    palette_tolerance: float = 12.0
+    palette_tolerance: float = 12.0  # RGB distance, used unless palette_delta_e is set
+    palette_delta_e: float | None = None  # perceptual (CIEDE2000) tolerance for the palette instead
+    max_colors: int = 6  # distinct text and fill colours on a slide
     fonts: list[str] = field(default_factory=list)
     font_dirs: list[Path] = field(default_factory=list)
     vision_model: str = "openai:gpt-6-luna"

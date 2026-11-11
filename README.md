@@ -77,6 +77,9 @@ overset --explain OVS002
 | OVS105 | structure | More than `max-font-families` (2) typeface families in the deck |
 | OVS106 | structure | A whole paragraph set in bold, italic or capitals |
 | OVS107 | structure | Underlined text that isn't a link |
+| OVS108 | structure | More than `max-colors` (6) distinct text and fill colours on a slide |
+| OVS109 | structure | Text in a vivid saturated blue |
+| OVS110 | structure | Saturated red and blue side by side (red text on blue, or touching red and blue shapes) |
 | OVS201 | structure | A placeholder left empty |
 | OVS202 | structure | A picture stretched out of its aspect ratio |
 | OVS203 | structure | More words on a slide than an audience will read (a coarse backstop; OVS209–211 are the specific checks) |
@@ -191,6 +194,8 @@ extend-select = ["OVS301"]
 fonts = ["Inter"]                   # by family: "Inter Medium" is Inter
 palette = ["20211B", "F7F5F2", "00C756"]
 palette-tolerance = 12              # RGB distance
+# palette-delta-e = 5               # or match perceptually (CIEDE2000) instead
+max-colors = 6                      # distinct text and fill colours on a slide
 font-dirs = ["fonts/"]              # relative to this file
 min-font-pt = 10
 max-words = 90
