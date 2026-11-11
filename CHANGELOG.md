@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `scripts/rank_eval.py` compares overset's findings with people's rankings of AI-made decks in
+  Slides-Align (docs/rank-eval.md, #21): on 20 topics, 62% pairwise agreement (50% is chance).
 - Calibration tooling: `scripts/label_corpus.py` writes a labelling sheet (reported and unreported slides
   per rule) and `scripts/score_labels.py` scores overset against it, per rule and across a threshold
   (docs/labelling.md, #20).
