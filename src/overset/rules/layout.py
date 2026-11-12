@@ -12,7 +12,6 @@ text -- and it is the slide's own: footers, slide numbers and the template's sha
 from __future__ import annotations
 
 from overset.rules.base import finding, rule
-from overset.rules.structure import _readable
 
 EMU_PER_PT = 12_700
 NEAR_MISS_PT = 12  # an edge this close to another, but not on it, looks like a slip
@@ -28,7 +27,7 @@ BACKGROUND_SHARE = 0.8  # a picture covering this much of the slide is a backgro
 
 
 def _content(slide, deck=None) -> list:
-    shapes = [s for s in slide.shapes if _readable(s)]
+    shapes = [s for s in slide.shapes if s.readable]
     if deck is not None:
         area = deck.width * deck.height
         shapes = [s for s in shapes if not (s.graphic and s.box.area >= BACKGROUND_SHARE * area)]

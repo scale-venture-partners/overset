@@ -82,8 +82,11 @@ def summary(results: list[dict], crashes: list[dict], render: bool) -> str:
         name = REGISTRY[code].name if code in REGISTRY else ""
         per = " | ".join(str(by_source[(code, s)]) for s in sources)
         lines.append(f"| {code} {name} | {findings[code]} | {len(decks[code])} | {per} |")
-    silent = [c for c in sorted(REGISTRY) if c not in findings and (render or REGISTRY[c].kind == "structure")]
-    lines += ["", f"Rules with no findings: {', '.join(silent) or 'none'}."]
+    ran = [c for c in sorted(REGISTRY) if REGISTRY[c].default and (render or REGISTRY[c].kind == "structure")]
+    silent = [c for c in ran if c not in findings]
+    off = [c for c in sorted(REGISTRY) if not REGISTRY[c].default]
+    lines += ["", f"Rules with no findings: {', '.join(silent) or 'none'}.",
+              f"Off by default, so not run: {', '.join(off)}."]  # fmt: skip
     if crashes:
         lines += ["", f"overset crashed on {len(crashes)} decks:"]
         lines += [f"- {c['file']}: {c['error']}" for c in crashes]

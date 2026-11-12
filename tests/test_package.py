@@ -113,3 +113,15 @@ def test_an_oversized_xml_part_is_reported_not_parsed(tmp_path, monkeypatch):
         )
     (problem, *_) = package.check(tmp_path / "big.pptx")
     assert "larger than" in problem
+
+
+def test_the_version_is_stated_once_in_effect():
+    # The PyPI workflow checks the release tag against pyproject.toml; overset --version reads
+    # __version__. They must agree.
+    import tomllib
+    from pathlib import Path
+
+    from overset import __version__
+
+    pyproject = tomllib.loads((Path(__file__).resolve().parent.parent / "pyproject.toml").read_text())
+    assert pyproject["project"]["version"] == __version__

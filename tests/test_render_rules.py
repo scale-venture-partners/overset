@@ -306,12 +306,31 @@ def test_14pt_regular_is_body_text(builder, make_deck, fake_render):
     assert f.message.endswith("under 4.5:1")
 
 
-def test_text_of_unknown_size_is_held_to_the_body_threshold(builder, make_deck, fake_render):
-    builder.text("Something else")  # no frame owns the rendered word, so its size is unknown
-    words = [[word("Caption", 1, 1, 2, 0.5)]]
-    render = fake_render(words, color="white", dpi=60, draw=_paint(GREY, (1.2, 1.1, 0.6, 0.3)))
-    (f,) = check("OVS104", make_deck(builder), render)
+def test_text_of_unknown_size_is_judged_by_its_rendered_size(builder, make_deck, fake_render):
+    # No frame owns these words, so the file gives no size: the render does. A 0.2in-tall word box is
+    # about 11pt (body text, 4.5:1); a 0.5in one about 28pt (large text, 3:1).
+    builder.text("Something else")
+    deck = make_deck(builder)
+    small = fake_render(
+        [[word("Caption", 1, 1, 2, 0.2)]], color="white", dpi=60, draw=_paint(GREY, (1.2, 1.03, 0.6, 0.12))
+    )
+    (f,) = check("OVS104", deck, small)
     assert f.message.endswith("under 4.5:1")
+    big = fake_render([[word("Caption", 1, 1, 2, 0.5)]], color="white", dpi=60, draw=_paint(GREY, (1.2, 1.1, 0.6, 0.3)))
+    assert check("OVS104", deck, big) == []
+
+
+def test_many_low_contrast_blocks_on_a_slide_are_one_finding(builder, make_deck, fake_render):
+    builder.text("Cells")
+    words = [[word(f"Cell{i}", 1, 1 + 0.6 * i, 2, 0.2, block=i) for i in range(5)]]
+
+    def draw(n, image, dpi):
+        for i in range(5):
+            _paint(GREY, (1.2, 1.03 + 0.6 * i, 0.6, 0.12))(n, image, dpi)
+
+    (f,) = check("OVS104", make_deck(builder), fake_render(words, color="white", dpi=60, draw=draw))
+    assert f.message.startswith("5 text blocks under 4.5:1, the lowest ")
+    assert f.snippet.startswith("Cell0 / Cell1 / Cell2")
 
 
 def test_the_large_text_threshold_is_configurable(builder, make_deck, fake_render):
@@ -351,9 +370,7 @@ def test_the_collision_sweep_finds_exactly_what_comparing_every_pair_finds():
 
 
 def test_a_bullet_rendered_on_three_lines_is_too_long(builder, make_deck, fake_render):
-    from test_structure import _bullets
-
-    _bullets(builder, [("Revenue grew in every region this year", 0), ("Churn fell", 0)])
+    builder.bullets([("Revenue grew in every region this year", 0), ("Churn fell", 0)])
     deck = make_deck(builder)
     # The first bullet wraps onto three lines, the second fits on one.
     words = [

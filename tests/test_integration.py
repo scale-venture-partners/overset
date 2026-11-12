@@ -69,11 +69,8 @@ def test_the_default_render_is_deleted_after_the_run(builder, tmp_path, monkeypa
 def test_each_bullet_rule_fires_alone_on_its_own_case(builder, tmp_path):
     # The issue's acceptance: a 6-bullet list, a 3-line bullet and a 3-level nest
     # each trigger exactly the intended rule, measured on a real render.
-    from test_structure import _bullets
-
-    _bullets(builder, [(f"Point {i}", 0) for i in range(1, 7)])
-    _bullets(
-        builder,
+    builder.bullets([(f"Point {i}", 0) for i in range(1, 7)])
+    builder.bullets(
         [
             ("Short point", 0),
             (
@@ -83,7 +80,7 @@ def test_each_bullet_rule_fires_alone_on_its_own_case(builder, tmp_path):
             ),
         ],
     )
-    _bullets(builder, [("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
+    builder.bullets([("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
     result = lint(builder.save(tmp_path / "deck.pptx"), Settings(select=("OVS209", "OVS210", "OVS211")))
     assert sorted((f.slide, f.code) for f in result.findings) == [(1, "OVS209"), (2, "OVS210"), (3, "OVS211")]
     (long,) = [f for f in result.findings if f.code == "OVS210"]

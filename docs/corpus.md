@@ -50,20 +50,19 @@ are picked at random, seeded, from those with at least three decks under the siz
 
 ## Baseline: overset on the corpus
 
-Structure rules only, after the triage below. Counts are findings; "Decks" is how many decks have at
-least one.
+overset 0.2.0, default rules. Counts are findings; "Decks" is how many decks have at least one.
 
 ```
-overset over 63 decks (without the render rules): 2554 findings; 63 of 63 decks have at least one.
+overset over 63 decks (without the render rules): 2946 findings; 63 of 63 decks have at least one.
 
 | Rule | Findings | Decks | Datacluster | Slides-Align | Zenodo10K |
 |---|---|---|---|---|---|
 | OVS000 invalid-package | 165 | 10 | 0 | 161 | 4 |
 | OVS004 frame-off-slide | 53 | 20 | 0 | 2 | 51 |
 | OVS101 text-too-small | 231 | 22 | 97 | 29 | 105 |
-| OVS105 too-many-font-families | 21 | 21 | 0 | 8 | 13 |
 | OVS106 emphasis-overuse | 108 | 28 | 38 | 14 | 56 |
 | OVS107 underline-not-link | 24 | 11 | 0 | 8 | 16 |
+| OVS109 saturated-blue-text | 220 | 9 | 0 | 94 | 126 |
 | OVS201 empty-placeholder | 62 | 11 | 0 | 0 | 62 |
 | OVS202 image-distorted | 132 | 25 | 0 | 45 | 87 |
 | OVS203 too-many-words | 165 | 41 | 32 | 40 | 93 |
@@ -73,11 +72,15 @@ overset over 63 decks (without the render rules): 2554 findings; 63 of 63 decks 
 | OVS207 table-without-header | 35 | 9 | 0 | 21 | 14 |
 | OVS209 too-many-bullets | 90 | 26 | 0 | 0 | 90 |
 | OVS211 bullet-depth | 22 | 7 | 0 | 0 | 22 |
+| OVS212 reading-order | 193 | 34 | 0 | 66 | 127 |
 
-Rules with no findings: OVS102, OVS103, OVS208, OVS301.
+Rules with no findings: OVS102, OVS103, OVS110, OVS208.
+Off by default, so not run: OVS005, OVS006, OVS007, OVS008, OVS009, OVS105, OVS108, OVS111, OVS112, OVS301, OVS401, OVS402, OVS403, OVS404, OVS405, OVS406.
 ```
 
-No deck made overset crash.
+With the render rules too (`run_corpus.py --render`, about 45 minutes): every deck rendered, none made
+overset crash, and the render rules added OVS001 1 finding, OVS002 310, OVS003 99, OVS104 514 and
+OVS210 237.
 
 ## Triage (#22)
 
@@ -110,3 +113,9 @@ were measurement artifacts rather than defects.
 - **OVS206 (missing alt text): 1,978 to 681, on by default.** Missing alt text is an error in
   Microsoft's Accessibility Checker, so the rule stays on, but a slide of ten unlabelled icons is one
   problem, not ten: it now reports once per slide, naming each visual.
+- **OVS104 (low contrast): 1,358 to 514**, after the full render run. Table text, whose size comes
+  through the table style, was held to the body-text 4.5:1 at 18-20pt; text the file doesn't size is
+  now measured from the render. A table slide also reported every cell; findings are now one per slide
+  and threshold. What remains in a sample is real: grey captions at 3.9:1, pale numerals at 1.1:1.
+- **OVS105 and OVS108 (font families, colours): off by default.** On Slides-Align the decks people
+  preferred used more of both (`docs/rank-eval.md`).

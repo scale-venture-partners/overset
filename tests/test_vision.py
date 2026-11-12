@@ -101,7 +101,9 @@ def test_requests_are_one_per_slide_one_per_style_check_and_one_per_pair(builder
     assert parts[1]["image_url"].startswith("data:image/png;base64,")
     assert "One green element per slide." in parts[0]["text"]
     assert {r["model"] for r in server.requests} == {"gpt-6-luna"}
-    assert server.requests[0]["questions"][0]["instructions"] == QUESTIONS["OVS401"]
+    # Requests go out in parallel, so the server sees them in any order: find the per-slide one.
+    slide = next(r for r in server.requests if r["questions"][0]["name"] == "OVS401")
+    assert slide["questions"][0]["instructions"] == QUESTIONS["OVS401"]
 
 
 def test_only_the_active_rules_are_asked(builder, make_deck, fake_render):

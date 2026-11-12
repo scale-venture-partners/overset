@@ -1,14 +1,16 @@
 # overset
 
-> **Status: alpha (0.1.0).** Rule codes and config keys may still change. Render rules depend on
+> **Status: alpha (0.2.0).** Rule codes and config keys may still change. Render rules depend on
 > LibreOffice and poppler, and thresholds are tuned on a limited set of decks. The vision rules are
 > experimental, and "as PowerPoint shows it" is an emulation of PowerPoint's layout in LibreOffice, not
 > PowerPoint itself.
 
 A deck linter. It renders a `.pptx` and **measures** what each slide actually
 shows: text off the slide, text spilling out of its frame, frames colliding,
-type too small, text too faint, fonts and colours off the brand. It reports
-with ruff-style rule codes you can select, ignore, and configure.
+type too small, text too faint, fonts and colours off the brand. It also checks
+what an audience or a screen reader can't see at a glance -- missing titles and
+alt text, reading order, overloaded lists -- and reports everything with
+ruff-style rule codes you can select, ignore, and configure.
 
 ```console
 $ overset product_overview.pptx --config examples/brand.toml
@@ -79,10 +81,10 @@ overset --explain OVS002
 | OVS102 | structure | A font outside the configured set |
 | OVS103 | structure | A colour outside the configured palette |
 | OVS104 | render | Text too close in tone to what is behind it (sampled from pixels) |
-| OVS105 | structure | More than `max-font-families` (2) typeface families in the deck |
+| OVS105 | structure | More than `max-font-families` (2) typeface families in the deck *(off by default)* |
 | OVS106 | structure | A whole paragraph set in bold, italic or capitals |
 | OVS107 | structure | Underlined text that isn't a link |
-| OVS108 | structure | More than `max-colors` (6) distinct text and fill colours on a slide |
+| OVS108 | structure | More than `max-colors` (6) distinct text and fill colours on a slide *(off by default)* |
 | OVS109 | structure | Text in a vivid saturated blue |
 | OVS110 | structure | Saturated red and blue side by side (red text on blue, or touching red and blue shapes) |
 | OVS111 | structure | Body text set as large as the title *(off by default)* |
@@ -107,6 +109,9 @@ Three kinds, by what a rule needs:
 - **structure** reads the `.pptx` alone: offline, milliseconds.
 - **render** measures a LibreOffice render: offline, seconds, and
   deterministic.
+Rules marked *off by default* turn on with `extend-select`: their thresholds come from a corpus of
+real decks, not yet from labelled data. See [docs/corpus.md](docs/corpus.md).
+
 - **vision** asks a multimodal decision model yes/no questions about each slide
   (and each pair of slides), and reports its probability as the finding's
   confidence. It's for the questions nothing can measure (is this slide
@@ -161,6 +166,16 @@ its boxes by estimate, counting on a shrink that PowerPoint never applied.
   isn't a zip at all (a `~$deck.pptx` lock file) is a usage error.
 - Decks that embed their fonts render in those
   fonts. For others, `font-dirs` registers font folders with fontconfig.
+- Groups are flattened: each child shape is checked on its own, placed through
+  the group's transform, and named with its group (`'Card 2 > TextBox 5'`).
+- Font sizes inherited from the layout, master or presentation defaults are
+  resolved, so OVS101, OVS104 and OVS111 see template text at its real size.
+  Fonts and colours are taken as stated (theme fonts resolved for OVS105);
+  colours the file doesn't state as RGB are not checked.
+- OVS004 tests the part of a frame text can occupy -- the box less its inner
+  margins -- so padding hanging over the edge is fine.
+- OVS202 allows for a small image's pixel rounding: a 28x32 icon's aspect ratio
+  is only known to about 4%.
 
 ## Vision rules
 
@@ -197,7 +212,8 @@ found from the deck's folder upward. Flags override it.
 ```toml
 select = ["OVS0", "OVS1"]           # omit for every default-on rule
 ignore = ["OVS203"]
-extend-select = ["OVS301"]
+extend-select = ["OVS301", "OVS005"]  # turn on off-by-default rules
+extend-ignore = []
 fonts = ["Inter"]                   # by family: "Inter Medium" is Inter
 palette = ["20211B", "F7F5F2", "00C756"]
 palette-tolerance = 12              # RGB distance
@@ -206,6 +222,7 @@ max-colors = 6                      # distinct text and fill colours on a slide
 font-dirs = ["fonts/"]              # relative to this file
 min-font-pt = 10
 max-words = 90
+max-aspect-distortion = 0.02        # OVS202: share a picture may be stretched
 max-bullets = 4                     # items at one level of one list
 max-bullet-lines = 2                # rendered lines per bullet
 max-bullet-depth = 2                # outline levels a list may use
@@ -217,14 +234,14 @@ min-whitespace = 0.25               # OVS007: share of the slide left empty
 clutter-spread = 3                  # OVS008: MADs above the deck's median edge density
 max-background-busyness = 0.19      # OVS009: edge density behind text
 min-title-ratio = 1.0               # OVS111: title size over the largest other text
-min-contrast = 4.5                 # body text (WCAG 2.2 AA)
-min-contrast-large = 3.0           # 18pt and up, or 14pt bold
+min-contrast = 4.5                  # body text (WCAG 2.2 AA)
+min-contrast-large = 3.0            # 18pt and up, or 14pt bold
 tolerance-pt = 2.0
 render = true
 render-as = "powerpoint"            # or "libreoffice": don't freeze shrink-to-fit
 vision = false
-vision-model = "openai:gpt-6-luna"       # provider:name, see Vision rules
-vision-threshold = 0.7             # minimum probability to report
+vision-model = "openai:gpt-6-luna"  # provider:name, see Vision rules
+vision-threshold = 0.7              # minimum probability to report
 vision-brief = "House style the reviewer should know."
 ```
 
@@ -247,7 +264,7 @@ uv run --group corpus scripts/fetch_corpus.py
 uv run scripts/run_corpus.py
 ```
 
-To measure the rules: [docs/labelling.md](docs/labelling.md) labels corpus slides and scores overset's
+To measure the rules, [docs/labelling.md](docs/labelling.md) labels corpus slides and scores overset's
 precision and recall against them, and [docs/rank-eval.md](docs/rank-eval.md) checks overset's findings
 against people's rankings of AI-made decks.
 

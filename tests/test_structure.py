@@ -456,19 +456,8 @@ def test_a_deck_without_sections_has_nothing_to_name(builder, make_deck):
     assert make_deck(builder).sections == [] and check("OVS208", make_deck(builder)) == []
 
 
-def _bullets(builder, items, layout=1):
-    """A content placeholder (bulleted by the master) holding (text, level) paragraphs."""
-    slide = builder.new_slide(layout=layout)
-    slide.shapes.title.text = f"Slide {len(builder.prs.slides)}"
-    tf = slide.placeholders[1].text_frame
-    for n, (text, level) in enumerate(items):
-        p = tf.paragraphs[0] if n == 0 else tf.add_paragraph()
-        p.text, p.level = text, level
-    return slide.placeholders[1]
-
-
 def test_a_list_of_six_bullets_is_too_many(builder, make_deck):
-    _bullets(builder, [(f"Point {i}", 0) for i in range(1, 7)])
+    builder.bullets([(f"Point {i}", 0) for i in range(1, 7)])
     (f,) = check("OVS209", make_deck(builder))
     assert f.message == "6 bullets in one list in 'Content Placeholder 2', over 4" and f.snippet == "Point 1"
     assert check("OVS211", make_deck(builder)) == []
@@ -477,10 +466,10 @@ def test_a_list_of_six_bullets_is_too_many(builder, make_deck):
 def test_siblings_are_counted_under_their_parent(builder, make_deck):
     # Four top-level points, each with three sub-points: no list is over four.
     items = [(t, lvl) for n in range(4) for t, lvl in [(f"Point {n}", 0)] + [(f"Sub {n}.{k}", 1) for k in range(3)]]
-    _bullets(builder, items)
+    builder.bullets(items)
     assert check("OVS209", make_deck(builder)) == []
     # A fifth top-level point after the sub-points still joins the first list.
-    _bullets(builder, items + [("Point 5", 0)])
+    builder.bullets(items + [("Point 5", 0)])
     (f,) = check("OVS209", make_deck(builder))
     assert f.slide == 2 and f.message.startswith("5 bullets")
 
@@ -489,7 +478,7 @@ def test_paragraphs_without_bullets_are_not_a_list(builder, make_deck):
     from pptx.oxml.ns import qn
 
     builder.text("\n".join(f"Line {i}" for i in range(8)), h=4)  # a text box: no bullets
-    body = _bullets(builder, [(f"Point {i}", 0) for i in range(6)])
+    body = builder.bullets([(f"Point {i}", 0) for i in range(6)])
     for p in body.text_frame.paragraphs:  # bullets switched off in a placeholder
         p._p.get_or_add_pPr().append(p._p.makeelement(qn("a:buNone"), {}))
     assert check("OVS209", make_deck(builder)) == []
@@ -506,7 +495,7 @@ def test_bullets_stated_in_a_text_box_count(builder, make_deck):
 
 
 def test_a_three_level_nest_is_too_deep(builder, make_deck):
-    _bullets(builder, [("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
+    builder.bullets([("Point", 0), ("Sub-point", 1), ("Sub-sub-point", 2)])
     (f,) = check("OVS211", make_deck(builder))
     assert f.message == "bullets nested 3 levels deep in 'Content Placeholder 2', over 2"
     assert f.snippet == "Sub-sub-point"
@@ -515,7 +504,7 @@ def test_a_three_level_nest_is_too_deep(builder, make_deck):
 
 
 def test_weights_and_styles_belong_to_one_family():
-    from overset.rules.structure import font_family
+    from overset.rules.style import font_family
 
     assert {font_family(f) for f in ("Inter", "Inter SemiBold", "Inter-Bold", "Inter Light Italic")} == {"Inter"}
     assert font_family("Segoe UI Light") == "Segoe UI"
@@ -649,7 +638,7 @@ def test_missing_alt_text_is_reported_once_per_slide(builder, make_deck):
 
 
 def test_kendall_tau():
-    from overset.rules.structure import kendall_tau
+    from overset.rules.accessibility import kendall_tau
 
     assert kendall_tau([0, 1, 2, 3]) == 1.0
     assert kendall_tau([3, 2, 1, 0]) == -1.0
