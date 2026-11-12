@@ -6,6 +6,7 @@ Exit codes follow riff and ruff: 0 clean, 1 findings, 2 a usage or file error.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -79,6 +80,17 @@ def explain(code: str, stream=None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except BrokenPipeError:
+        # The reader stopped early (`overset deck.pptx | head`): not an error worth a traceback.
+        # Point stdout at the null device so the interpreter's final flush can't fail again.
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+        return 1
+
+
+def _main(argv: list[str] | None) -> int:
     args = build_parser().parse_args(argv)
     if args.list_rules:
         list_rules()

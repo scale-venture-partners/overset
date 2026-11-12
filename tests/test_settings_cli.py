@@ -1,6 +1,7 @@
 """Configuration, the command line, and the engine's handling of a failed render."""
 
 import json
+import sys
 
 import pytest
 
@@ -130,3 +131,22 @@ def test_font_dirs_become_a_fontconfig_file(tmp_path):
     conf = (tmp_path / "fonts.conf").read_text()
     assert env["FONTCONFIG_FILE"] == str(tmp_path / "fonts.conf") and str(fonts.resolve()) in conf
     assert str(tmp_path / "missing") not in conf, "a folder that doesn't exist is dropped"
+
+
+def test_a_reader_that_stops_early_gets_no_traceback(builder, tmp_path):
+    # `overset deck.pptx | head -1`: the pipe closes while overset is still writing.
+    import subprocess
+
+    for i in range(400):
+        builder.text(f"Fine print {i}", y=0.01 * i, size=6)
+    deck = builder.save(tmp_path / "many.pptx")
+    proc = subprocess.Popen(
+        [sys.executable, "-c", "import sys; from overset.cli import main; sys.exit(main())", str(deck),
+         "--no-render", "--select", "OVS101"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )  # fmt: skip
+    proc.stdout.readline()
+    proc.stdout.close()
+    _, err = proc.communicate(timeout=60)
+    assert b"Traceback" not in err and b"BrokenPipeError" not in err
