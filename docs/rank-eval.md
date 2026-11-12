@@ -16,46 +16,54 @@ human ranking (Kendall's tau-b), and counts, over every pair of decks overset te
 deck with fewer findings is the one people preferred (pairwise agreement; 50% is chance). It does the
 same per rule, to show which rules carry signal.
 
-## First run
+## Results
 
-20 topics (seeded), structure rules only, on the rules as of #48. 5-8 products per topic with a `.pptx`
-under 15 MB; NotebookLM, which produces PDFs, is never included.
+Structure rules only, on the rules as of 0.2.0. 5-8 products per topic with a `.pptx` under 15 MB;
+NotebookLM, which produces PDFs, is never included. Two seeded samples:
 
-- Mean Kendall's tau-b: **+0.22** (1 would be overset ordering decks exactly as people did).
-- Pairwise agreement, all rules together: **175 of 281 pairs, 62%**.
+| | 20 topics | 60 topics |
+|---|---|---|
+| Mean Kendall's tau-b | +0.22 | +0.20 |
+| Pairwise agreement, all rules | 62% (175 / 281) | 62% (537 / 868) |
+
+Per rule, 60 topics:
 
 | Rule | Pairs it tells apart | Agrees with people |
 |---|---|---|
-| OVS109 saturated-blue-text | 60 | 73% |
-| OVS106 emphasis-overuse | 197 | 68% |
-| OVS202 image-distorted | 186 | 67% |
-| OVS203 too-many-words | 187 | 65% |
-| OVS000 invalid-package | 250 | 64% |
-| OVS004 frame-off-slide | 144 | 58% |
-| OVS212 reading-order | 165 | 50% |
-| OVS206 missing-alt-text | 167 | 47% |
-| OVS204 missing-slide-title | 91 | 43% |
-| OVS108 too-many-colors | 102 | 40% |
-| OVS105 too-many-font-families | 129 | 27% |
-| OVS101 text-too-small | 76 | 21% |
-| OVS207 table-without-header | 55 | 11% |
-| OVS107 underline-not-link | 4 | 25% |
+| OVS109 saturated-blue-text | 153 | 69% |
+| OVS000 invalid-package | 772 | 66% |
+| OVS202 image-distorted | 576 | 65% |
+| OVS203 too-many-words | 547 | 62% |
+| OVS106 emphasis-overuse | 584 | 59% |
+| OVS209 too-many-bullets | 17 | 59% |
+| OVS004 frame-off-slide | 425 | 55% |
+| OVS212 reading-order | 516 | 54% |
+| OVS206 missing-alt-text | 505 | 44% |
+| OVS204 missing-slide-title | 270 | 41% |
+| OVS108 too-many-colors | 348 | 32% |
+| OVS105 too-many-font-families | 385 | 28% |
+| OVS101 text-too-small | 279 | 19% |
+| OVS207 table-without-header | 156 | 8% |
+
+(OVS107 and OVS205 tell fewer than 20 pairs apart and are left out.)
 
 ## Reading it
 
-- **overset's findings track preference, modestly.** Several rules that measure visible layout and
-  typography -- distortion, emphasis, word count, saturated blue, broken packages -- each agree with
-  people about two times in three.
-- **The accessibility rules are close to chance** (OVS206, OVS212, OVS204): people judged how the decks
-  look, and alt text and reading order are invisible. That is not evidence against those rules.
-- **Some rules run the other way**: preferred decks have more small text (OVS101), more tables
-  without a header row (OVS207), more font families (OVS105) and more colours (OVS108). A likely reading
-  is that richer, more polished decks use more tables, more typographic variety and small source lines,
-  so these counts measure richness here as much as defects. Worth checking before tuning any of them on
-  this evidence.
-- **Not significance-tested.** Pairs within a topic share decks, so they are not independent, and 20
-  topics is a small sample: treat this as direction, not effect size. Run with more topics before relying
-  on it.
+- **overset's findings track preference, modestly**, and the result held from 20 topics to 60. Rules
+  that measure visible faults -- distortion, saturated blue, broken packages, word count, emphasis --
+  each agree with people about two times in three.
+- **The accessibility rules sit near chance or below** (OVS206, OVS212, OVS204, OVS207): people judged
+  how the decks look, and alt text, reading order and table headers are invisible. That is not evidence
+  against them; they stay on.
+- **OVS101 runs strongly the other way** (19%): preferred decks have more small text -- source lines,
+  captions, dense tables. Text too small to read from the room is still a defect, so it stays on, but its
+  findings say "richer deck" as often as "worse deck".
+- **OVS105 and OVS108 run the other way too** (28% and 32%, over hundreds of pairs): people preferred
+  decks with more font families and more colours. These are style prescriptions (Kosslyn et al.'s "no
+  more than two families"), not defects, and the evidence here contradicts them, so **from 0.2.0 both are
+  off by default**. Turn them on for a house style that wants them.
+- **Not significance-tested.** Pairs within a topic share decks, so they are not independent: treat this
+  as direction, not effect size.
 - **Deck-level only.** The labels rank whole decks, so this cannot set a slide-level threshold; that
   needs labelled slides (docs/labelling.md, #20).
 - **The vision rules were not run** (no API key in the environment that produced this); `--vision`

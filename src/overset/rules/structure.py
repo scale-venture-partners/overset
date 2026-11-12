@@ -181,10 +181,13 @@ def font_family(face: str) -> str:
     "too-many-font-families",
     "More typeface families in the deck than a consistent design uses",
     "structure",
+    default=False,
     explanation="Counts the families text is actually set in -- stated, inherited from the layout, and the "
     "theme's heading and body fonts -- with weights and styles of one family counted once. Kosslyn et al. "
     "(2012) found fonts mixed arbitrarily in 37% of sampled decks. Symbol fonts are not counted. Unlike "
-    "OVS102 it needs no brand font set. Limit: `max-font-families` (default 2).",
+    "OVS102 it needs no brand font set. Limit: `max-font-families` (default 2)."
+    " Off by default: on Slides-Align, the decks people preferred used more families, not fewer "
+    "(docs/rank-eval.md).",
 )
 def too_many_font_families(ctx):
     first: dict[str, int] = {}
@@ -653,10 +656,13 @@ def _slide_colours(slide) -> list[str]:
     "too-many-colors",
     "More text and fill colours on a slide than a consistent design uses",
     "structure",
+    default=False,
     explanation="Colour variety adds visual clutter (Rosenholtz et al. 2007) and lowers first-impression "
     "ratings (Reinecke et al. 2013). Counts the distinct colours stated on text and solid fills, with shades "
     "within a CIEDE2000 of 5 counted once; theme colours the file does not state as RGB are not counted. "
-    "Limit: `max-colors` (default 6).",
+    "Limit: `max-colors` (default 6)."
+    " Off by default: on Slides-Align, the decks people preferred used more colours, not fewer "
+    "(docs/rank-eval.md).",
 )
 def too_many_colors(ctx):
     out, limit = [], ctx.settings.max_colors

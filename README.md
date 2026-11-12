@@ -79,10 +79,10 @@ overset --explain OVS002
 | OVS102 | structure | A font outside the configured set |
 | OVS103 | structure | A colour outside the configured palette |
 | OVS104 | render | Text too close in tone to what is behind it (sampled from pixels) |
-| OVS105 | structure | More than `max-font-families` (2) typeface families in the deck |
+| OVS105 | structure | More than `max-font-families` (2) typeface families in the deck *(off by default)* |
 | OVS106 | structure | A whole paragraph set in bold, italic or capitals |
 | OVS107 | structure | Underlined text that isn't a link |
-| OVS108 | structure | More than `max-colors` (6) distinct text and fill colours on a slide |
+| OVS108 | structure | More than `max-colors` (6) distinct text and fill colours on a slide *(off by default)* |
 | OVS109 | structure | Text in a vivid saturated blue |
 | OVS110 | structure | Saturated red and blue side by side (red text on blue, or touching red and blue shapes) |
 | OVS111 | structure | Body text set as large as the title *(off by default)* |
