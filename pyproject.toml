@@ -1,6 +1,6 @@
 [project]
 name = "overset"
-version = "0.1.0"
+version = "0.2.0"
 description = "A deck linter: measures what a slide actually renders -- text off the slide, out of its box, colliding, too small, too faint, off-brand -- with ruff-style rule codes"
 readme = "README.md"
 license = "MIT"
