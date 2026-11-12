@@ -351,9 +351,7 @@ def test_the_collision_sweep_finds_exactly_what_comparing_every_pair_finds():
 
 
 def test_a_bullet_rendered_on_three_lines_is_too_long(builder, make_deck, fake_render):
-    from test_structure import _bullets
-
-    _bullets(builder, [("Revenue grew in every region this year", 0), ("Churn fell", 0)])
+    builder.bullets([("Revenue grew in every region this year", 0), ("Churn fell", 0)])
     deck = make_deck(builder)
     # The first bullet wraps onto three lines, the second fits on one.
     words = [

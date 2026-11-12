@@ -48,7 +48,7 @@ FOLDERS = {"Skywork": "Skyworks", "Skywork-Banana": "Skyworks-Banana"}
 
 def rankings() -> dict[tuple[str, str], dict[str, int]]:
     """{(category, topic): {product: rank}}, rank 1 best."""
-    body, _ = fc._get(f"{fc.HF}/datasets/{fc.SLIDES_ALIGN}/resolve/main/Slides-Align.json")
+    body, _ = fc.get(f"{fc.HF}/datasets/{fc.SLIDES_ALIGN}/resolve/main/Slides-Align.json")
     out: dict = defaultdict(dict)
     for r in json.loads(body)["results"]:
         out[(r["difficulty"], r["topic"])][r["product"]] = int(r["rank"])

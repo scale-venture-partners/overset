@@ -80,7 +80,7 @@ class Remote:
 # --- Hugging Face -------------------------------------------------------------------------------
 
 
-def _get(url: str) -> tuple[bytes, str]:
+def get(url: str) -> tuple[bytes, str]:
     request = urllib.request.Request(url, headers={"User-Agent": "overset-corpus"})
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
         return response.read(), response.headers.get("Link", "")
@@ -94,7 +94,7 @@ def tree(dataset: str, path: str = "", recursive: bool = False) -> list[Remote]:
     url = f"{HF}/api/datasets/{dataset}/tree/main/{urllib.parse.quote(path)}{query}"
     out = []
     while url:
-        body, link = _get(url)
+        body, link = get(url)
         for item in json.loads(body):
             if item.get("type") == "file":
                 sha = (item.get("lfs") or {}).get("oid", "")
@@ -143,7 +143,7 @@ def zenodo_metadata() -> dict[str, dict]:
         import pyarrow.parquet as pq
     except ImportError:
         raise SystemExit("Reading Zenodo10K's metadata needs pyarrow: run with `uv run --group corpus ...`") from None
-    body, _ = _get(f"{HF}/datasets/{ZENODO}/resolve/main/data/pptx-00000-of-00001.parquet")
+    body, _ = get(f"{HF}/datasets/{ZENODO}/resolve/main/data/pptx-00000-of-00001.parquet")
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmp:
         tmp.write(body)
         tmp.flush()
@@ -185,7 +185,7 @@ def select() -> list[tuple[Remote, str, str, str, str, str]]:
 def _directories(dataset: str) -> list[str]:
     import json
 
-    body, _ = _get(f"{HF}/api/datasets/{dataset}/tree/main")
+    body, _ = get(f"{HF}/api/datasets/{dataset}/tree/main")
     return sorted(item["path"] for item in json.loads(body) if item.get("type") == "directory")
 
 

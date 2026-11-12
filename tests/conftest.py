@@ -66,6 +66,16 @@ class DeckBuilder:
         buf.seek(0)
         return (into or self.slide).shapes.add_picture(buf, Inches(x), Inches(y), Inches(w), Inches(h))
 
+    def bullets(self, items, layout=1):
+        """A content placeholder (bulleted by the master) holding (text, level) paragraphs."""
+        slide = self.new_slide(layout=layout)
+        slide.shapes.title.text = f"Slide {len(self.prs.slides)}"
+        tf = slide.placeholders[1].text_frame
+        for n, (text, level) in enumerate(items):
+            p = tf.paragraphs[0] if n == 0 else tf.add_paragraph()
+            p.text, p.level = text, level
+        return slide.placeholders[1]
+
     def save(self, path: Path) -> Path:
         self.prs.save(str(path))
         return path

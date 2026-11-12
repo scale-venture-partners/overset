@@ -21,9 +21,10 @@ from __future__ import annotations
 import statistics
 from collections import Counter
 
+from overset.deck import TITLE_PLACEHOLDERS
 from overset.rules.base import clip, finding, rule
 from overset.rules.render_rules import assign_owners
-from overset.rules.structure import TITLE_PLACEHOLDERS, font_family
+from overset.rules.style import font_family
 
 EMU_PER_INCH = 914_400
 EDGE_LEVEL = 32  # a pixel whose edge response (0-255) exceeds this is an edge

@@ -112,6 +112,14 @@ class Shape:
     paragraphs: list[Paragraph] = field(default_factory=list)  # text frames, non-empty paragraphs only
 
     @property
+    def readable(self) -> bool:
+        """A shape a screen reader announces: text, or a visual that needs alt text; not the
+        template's, not decorative, not a footer, date or slide number."""
+        if self.from_layout or self.quiet_placeholder or self.box is None or self.decorative:
+            return False
+        return bool(self.text.strip()) or bool(self.graphic)
+
+    @property
     def label(self) -> str:
         """The name a message uses: a child is named with its group, since
         names inside groups ("TextBox 3") repeat from card to card."""

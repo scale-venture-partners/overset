@@ -17,6 +17,11 @@ def rgb(hex_color: str) -> tuple[int, int, int]:
     return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
 
+def rgb_distance(a: str, b: str) -> float:
+    """Euclidean distance between two "RRGGBB" colours in RGB: simple, but not perceptual."""
+    return sum((x - y) ** 2 for x, y in zip(rgb(a), rgb(b), strict=True)) ** 0.5
+
+
 def lab(hex_color: str) -> tuple[float, float, float]:
     """sRGB (D65) to CIELAB."""
 

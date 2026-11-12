@@ -2,7 +2,7 @@
 
 
 def load_rules() -> None:
-    from overset.rules import layout, measured, render_rules, structure  # noqa: F401
+    from overset.rules import accessibility, layout, measured, render_rules, structure, style  # noqa: F401
 
     try:
         from overset.rules import vision  # noqa: F401
