@@ -37,12 +37,21 @@ class Settings:
     max_bullet_lines: int = 2  # rendered lines per bullet
     max_bullet_depth: int = 2  # outline levels a list may use
     max_font_families: int = 2  # typeface families across the deck
+    min_reading_order: float = 0.0  # Kendall's tau of reading order against layout; below 0 is worse than random
     tolerance_pt: float = 2.0
     min_contrast: float = 4.5  # WCAG 2.2 SC 1.4.3: body text
     min_contrast_large: float = 3.0  # large text: at least 18pt, or 14pt bold
     max_aspect_distortion: float = 0.02
     palette: list[str] = field(default_factory=list)
-    palette_tolerance: float = 12.0
+    palette_tolerance: float = 12.0  # RGB distance, used unless palette_delta_e is set
+    palette_delta_e: float | None = None  # perceptual (CIEDE2000) tolerance for the palette instead
+    max_colors: int = 6  # distinct text and fill colours on a slide
+    align_tolerance_pt: float = 4.0  # OVS005: edges this close count as lined up
+    min_balance: float = 0.05  # OVS006 (off by default): Ngo et al.'s balance, 0-1; the corpus's 10th percentile
+    clutter_spread: float = 3.0  # OVS008 (off by default): MADs above the deck's median edge density
+    max_background_busyness: float = 0.19  # OVS009 (off by default): edge density behind text; corpus 99th pct
+    min_title_ratio: float = 1.0  # OVS111 (off by default): title size over the largest other text
+    min_whitespace: float = 0.25  # OVS007 (off by default): share left empty; about the corpus's 10th percentile
     fonts: list[str] = field(default_factory=list)
     font_dirs: list[Path] = field(default_factory=list)
     vision_model: str = "openai:gpt-6-luna"

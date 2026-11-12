@@ -19,7 +19,7 @@ def test_defaults_skip_off_by_default_and_vision_rules():
 
 
 def test_select_ignore_and_extend_follow_ruff():
-    assert Settings(select=("OVS1",)).active_codes() == [f"OVS10{n}" for n in range(1, 8)]
+    assert Settings(select=("OVS1",)).active_codes() == [f"OVS1{n:02}" for n in range(1, 13)]
     assert "OVS104" not in Settings(select=("OVS1",), ignore=("OVS104",)).active_codes()
     assert "OVS301" in Settings(extend_select=("OVS301",)).active_codes()
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from overset import color as colour
 from overset.deck import TITLE_PLACEHOLDERS
 from overset.rules.base import clip, finding, rule
 
@@ -14,7 +15,9 @@ def _hex_distance(a: str, b: str) -> float:
     return ((ra - rb) ** 2 + (ga - gb) ** 2 + (ba - bb) ** 2) ** 0.5
 
 
-def _in_palette(color: str, palette: list[str], tolerance: float) -> bool:
+def _in_palette(color: str, palette: list[str], tolerance: float, delta_e: float | None = None) -> bool:
+    if delta_e is not None:
+        return any(colour.distance(color, p.lstrip("#")) <= delta_e for p in palette)
     return any(_hex_distance(color.upper(), p.upper().lstrip("#")) <= tolerance for p in palette)
 
 
@@ -125,10 +128,13 @@ def off_brand_font(ctx):
     "A colour outside the configured palette",
     "structure",
     explanation="Checks colours stated as RGB on text and solid fills; theme colours are the template's own "
-    "and pass. Inactive until `palette` is configured.",
+    "and pass. A colour matches the palette within `palette-tolerance` (RGB distance, default 12), or within "
+    "`palette-delta-e` (CIEDE2000, perceptual) when that is set: RGB distance is not perceptual, so one "
+    "tolerance is too tight among some colours and too loose among others. Inactive until `palette` is "
+    "configured.",
 )
 def off_palette_color(ctx):
-    palette, tol = ctx.settings.palette, ctx.settings.palette_tolerance
+    palette, tol, delta_e = ctx.settings.palette, ctx.settings.palette_tolerance, ctx.settings.palette_delta_e
     if not palette:
         return []
     out = []
@@ -141,7 +147,7 @@ def off_palette_color(ctx):
             if shape.fill:
                 colors.append((shape.fill, f"fill of '{shape.label}'"))
             for color, where in colors:
-                if color not in seen and not _in_palette(color, palette, tol):
+                if color not in seen and not _in_palette(color, palette, tol, delta_e):
                     seen.add(color)
                     out.append(
                         finding(ctx, "OVS103", f"#{color} is not in the brand palette", slide.number, clip(where))
@@ -541,4 +547,182 @@ def repeated_layout(ctx):
     for prev, cur in zip(slides, slides[1:], strict=False):
         if prev.layout == cur.layout:
             out.append(finding(ctx, "OVS301", f"same layout as slide {prev.number} ('{cur.layout}')", cur.number))
+    return out
+
+
+def kendall_tau(order: list[int]) -> float:
+    """Kendall's tau between 0..n-1 and `order`: 1 for the same order, -1 for reversed."""
+    n = len(order)
+    if n < 2:
+        return 1.0
+    concordant = sum(1 for i in range(n) for j in range(i + 1, n) if order[i] < order[j])
+    pairs = n * (n - 1) // 2
+    return (2 * concordant - pairs) / pairs
+
+
+def _row_order(boxes) -> list[int]:
+    """Top to bottom, then left to right; shapes whose tops are within half the shorter one's
+    height of each other share a row."""
+    order = sorted(range(len(boxes)), key=lambda i: (boxes[i].y, boxes[i].x))
+    rows: list[list[int]] = []
+    for i in order:
+        row = rows[-1] if rows else None
+        if row and abs(boxes[i].y - boxes[row[0]].y) <= min(boxes[i].h, boxes[row[0]].h) / 2:
+            row.append(i)
+        else:
+            rows.append([i])
+    return [i for row in rows for i in sorted(row, key=lambda k: boxes[k].x)]
+
+
+def _column_order(boxes) -> list[int]:
+    """Left column to right column, top to bottom within each: shapes whose horizontal spans
+    overlap share a column. A slide in two columns is read down the first, then the second."""
+    columns: list[list[int]] = []
+    for i in sorted(range(len(boxes)), key=lambda k: boxes[k].x):
+        column = next(
+            (c for c in columns if any(boxes[i].x < boxes[k].right and boxes[k].x < boxes[i].right for k in c)), None
+        )
+        if column is None:
+            columns.append([i])
+        else:
+            column.append(i)
+    return [i for c in columns for i in sorted(c, key=lambda k: boxes[k].y)]
+
+
+def _readable(shape) -> bool:
+    """A shape a screen reader announces: text, or a visual that needs alt text; not the template's,
+    not decorative, not a footer, date or slide number."""
+    if shape.from_layout or shape.quiet_placeholder or shape.box is None or shape.decorative:
+        return False
+    return bool(shape.text.strip()) or bool(shape.graphic)
+
+
+@rule(
+    "OVS212",
+    "reading-order",
+    "A screen reader reads the slide in an order that does not follow its layout",
+    "structure",
+    explanation="A screen reader reads shapes in the order they were added (PowerPoint's Reading Order "
+    "pane), which can differ from what the eye sees. Microsoft's Accessibility Checker flags an illogical "
+    "reading order. The order is compared with the layout's -- by rows, or down columns for a multi-column "
+    "slide, whichever fits better -- using Kendall's tau, and reported under `min-reading-order` (default 0: "
+    "more pairs out of order than in). "
+    "A title that is not read first is reported too. Footers, dates, slide numbers, decorative visuals "
+    "and the template's own shapes are left out.",
+)
+def reading_order(ctx):
+    out, floor = [], ctx.settings.min_reading_order
+    for slide in ctx.deck.slides:
+        shapes = [s for s in slide.shapes if _readable(s)]
+        title = slide.title
+        if title in shapes and shapes[0] is not title:
+            n = shapes.index(title) + 1
+            out.append(finding(ctx, "OVS212", f"the title is read {_ordinal(n)}, not first", slide.number))
+        if len(shapes) < 3:
+            continue
+        boxes = [s.box for s in shapes]
+        tau = max(kendall_tau(_row_order(boxes)), kendall_tau(_column_order(boxes)))
+        if tau < floor:
+            first = ", ".join(f"'{s.label}'" for s in shapes[:3])
+            message = f"reading order follows the layout poorly (tau {tau:.2f}, under {floor:g}); read first: {first}"
+            out.append(finding(ctx, "OVS212", message, slide.number))
+    return out
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'tsnrhtdd'[(n // 10 % 10 != 1) * (n % 10 < 4) * n % 10 :: 4]}"
+
+
+SAME_COLOUR = 5.0  # CIEDE2000 under which two stated colours count as one
+
+
+def _slide_colours(slide) -> list[str]:
+    """Distinct text and fill colours stated on a slide, near-identical shades merged."""
+    out: list[str] = []
+    for shape in slide.shapes:
+        if shape.from_layout:
+            continue
+        for c in [r.color for r in shape.runs if r.color and r.text.strip()] + [shape.fill] * bool(shape.fill):
+            if not any(colour.distance(c, seen) < SAME_COLOUR for seen in out):
+                out.append(c)
+    return out
+
+
+@rule(
+    "OVS108",
+    "too-many-colors",
+    "More text and fill colours on a slide than a consistent design uses",
+    "structure",
+    explanation="Colour variety adds visual clutter (Rosenholtz et al. 2007) and lowers first-impression "
+    "ratings (Reinecke et al. 2013). Counts the distinct colours stated on text and solid fills, with shades "
+    "within a CIEDE2000 of 5 counted once; theme colours the file does not state as RGB are not counted. "
+    "Limit: `max-colors` (default 6).",
+)
+def too_many_colors(ctx):
+    out, limit = [], ctx.settings.max_colors
+    for slide in ctx.deck.slides:
+        colours = _slide_colours(slide)
+        if len(colours) > limit:
+            listed = ", ".join(f"#{c}" for c in colours)
+            out.append(finding(ctx, "OVS108", f"{len(colours)} colours, over {limit}: {listed}", slide.number))
+    return out
+
+
+@rule(
+    "OVS109",
+    "saturated-blue-text",
+    "Text in a vivid saturated blue",
+    "structure",
+    explanation="The eye focuses saturated blue less sharply than other hues, so thin strokes in it look "
+    "blurred; Kosslyn et al. (2012) found saturated blue text in 55% of sampled decks. Checks colours stated "
+    "as RGB. Reported once per text frame.",
+)
+def saturated_blue_text(ctx):
+    out = []
+    for slide in ctx.deck.slides:
+        for shape in slide.shapes:
+            hit = next((r for r in shape.runs if r.color and r.text.strip() and colour.saturated_blue(r.color)), None)
+            if hit and not shape.from_layout:
+                message = f"text in saturated blue #{hit.color} in '{shape.label}'"
+                out.append(finding(ctx, "OVS109", message, slide.number, clip(hit.text)))
+    return out
+
+
+def _red_blue(a: str, b: str) -> bool:
+    return (colour.saturated_red(a) and colour.saturated_blue(b)) or (
+        colour.saturated_blue(a) and colour.saturated_red(b)
+    )
+
+
+@rule(
+    "OVS110",
+    "red-blue-adjacent",
+    "Saturated red and blue side by side",
+    "structure",
+    explanation="Saturated red and blue focus at different depths in the eye, so where they meet they seem "
+    "to sit at different distances and the edge shimmers (chromostereopsis); Kosslyn et al. (2012) found it "
+    "in 36% of sampled decks. Reports red text on a blue fill (or the reverse) and red and blue filled shapes "
+    "that touch or overlap. Checks colours stated as RGB.",
+)
+def red_blue_adjacent(ctx):
+    out, tol = [], ctx.settings.tolerance_emu
+    for slide in ctx.deck.slides:
+        shapes = [s for s in slide.shapes if not s.from_layout]
+        for shape in shapes:
+            hit = next((r for r in shape.runs if shape.fill and r.color and _red_blue(r.color, shape.fill)), None)
+            if hit:
+                message = f"#{hit.color} text on a #{shape.fill} fill in '{shape.label}'"
+                out.append(finding(ctx, "OVS110", message, slide.number, clip(hit.text)))
+        filled = [s for s in shapes if s.fill and s.box]
+        for i, a in enumerate(filled):
+            for b in filled[i + 1 :]:
+                touching = (
+                    a.box.x <= b.box.right + tol
+                    and b.box.x <= a.box.right + tol
+                    and a.box.y <= b.box.bottom + tol
+                    and b.box.y <= a.box.bottom + tol
+                )
+                if touching and _red_blue(a.fill, b.fill):
+                    message = f"'{a.label}' (#{a.fill}) and '{b.label}' (#{b.fill}) meet"
+                    out.append(finding(ctx, "OVS110", message, slide.number))
     return out

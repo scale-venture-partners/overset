@@ -70,6 +70,11 @@ overset --explain OVS002
 | OVS002 | render | Rendered text spills out of its own frame |
 | OVS003 | render | Text from two frames is drawn on top of each other |
 | OVS004 | structure | A text frame extends past the slide edge |
+| OVS005 | structure | Shapes that line up with nothing else on the slide *(off by default)* |
+| OVS006 | structure | Content weighted heavily to one side of the slide *(off by default)* |
+| OVS007 | structure | Too little empty space on the slide *(off by default)* |
+| OVS008 | render | A slide far busier (edge density) than the rest of its deck *(off by default)* |
+| OVS009 | render | Text set over a busy background *(off by default)* |
 | OVS101 | structure | Text set below the minimum size (after shrink-to-fit) |
 | OVS102 | structure | A font outside the configured set |
 | OVS103 | structure | A colour outside the configured palette |
@@ -77,6 +82,11 @@ overset --explain OVS002
 | OVS105 | structure | More than `max-font-families` (2) typeface families in the deck |
 | OVS106 | structure | A whole paragraph set in bold, italic or capitals |
 | OVS107 | structure | Underlined text that isn't a link |
+| OVS108 | structure | More than `max-colors` (6) distinct text and fill colours on a slide |
+| OVS109 | structure | Text in a vivid saturated blue |
+| OVS110 | structure | Saturated red and blue side by side (red text on blue, or touching red and blue shapes) |
+| OVS111 | structure | Body text set as large as the title *(off by default)* |
+| OVS112 | structure | A slide whose fonts or title size the rest of the deck doesn't use *(off by default)* |
 | OVS201 | structure | A placeholder left empty |
 | OVS202 | structure | A picture stretched out of its aspect ratio |
 | OVS203 | structure | More words on a slide than an audience will read (a coarse backstop; OVS209–211 are the specific checks) |
@@ -88,6 +98,7 @@ overset --explain OVS002
 | OVS209 | structure | A list with more than `max-bullets` (4) items at one level |
 | OVS210 | render | A bullet that renders on more than `max-bullet-lines` (2) lines |
 | OVS211 | structure | Bullets nested more than `max-bullet-depth` (2) levels deep |
+| OVS212 | structure | A screen reader's reading order doesn't follow the layout, or the title isn't read first |
 | OVS301 | structure | Two consecutive slides use the same layout *(off by default)* |
 | OVS401–406 | vision | Clutter, weak hierarchy, misalignment, text over busy images, monotonous sequences, a slide that doesn't belong *(opt-in)* |
 
@@ -190,6 +201,8 @@ extend-select = ["OVS301"]
 fonts = ["Inter"]                   # by family: "Inter Medium" is Inter
 palette = ["20211B", "F7F5F2", "00C756"]
 palette-tolerance = 12              # RGB distance
+# palette-delta-e = 5               # or match perceptually (CIEDE2000) instead
+max-colors = 6                      # distinct text and fill colours on a slide
 font-dirs = ["fonts/"]              # relative to this file
 min-font-pt = 10
 max-words = 90
@@ -197,6 +210,13 @@ max-bullets = 4                     # items at one level of one list
 max-bullet-lines = 2                # rendered lines per bullet
 max-bullet-depth = 2                # outline levels a list may use
 max-font-families = 2               # typeface families across the deck
+min-reading-order = 0.0             # Kendall's tau of reading order against layout (-1 to 1)
+align-tolerance-pt = 4              # OVS005: edges this close count as lined up
+min-balance = 0.05                  # OVS006: Ngo et al.'s balance measure, 0-1
+min-whitespace = 0.25               # OVS007: share of the slide left empty
+clutter-spread = 3                  # OVS008: MADs above the deck's median edge density
+max-background-busyness = 0.19      # OVS009: edge density behind text
+min-title-ratio = 1.0               # OVS111: title size over the largest other text
 min-contrast = 4.5                 # body text (WCAG 2.2 AA)
 min-contrast-large = 3.0           # 18pt and up, or 14pt bold
 tolerance-pt = 2.0
@@ -226,5 +246,9 @@ To see what the rules do on real decks, fetch the starter corpus (63 openly lice
 uv run --group corpus scripts/fetch_corpus.py
 uv run scripts/run_corpus.py
 ```
+
+To measure the rules: [docs/labelling.md](docs/labelling.md) labels corpus slides and scores overset's
+precision and recall against them, and [docs/rank-eval.md](docs/rank-eval.md) checks overset's findings
+against people's rankings of AI-made decks.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). MIT licensed.

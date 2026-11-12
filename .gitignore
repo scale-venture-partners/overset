@@ -13,3 +13,5 @@ coverage.xml
 # The starter corpus: decks are fetched on demand, never committed (scripts/fetch_corpus.py).
 /data/pptx/
 /data/results/
+/data/rank/
+/data/labels/

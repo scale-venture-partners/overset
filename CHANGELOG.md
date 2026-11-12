@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- `scripts/rank_eval.py` compares overset's findings with people's rankings of AI-made decks in
+  Slides-Align (docs/rank-eval.md, #21): on 20 topics, 62% pairwise agreement (50% is chance).
+- Calibration tooling: `scripts/label_corpus.py` writes a labelling sheet (reported and unreported slides
+  per rule) and `scripts/score_labels.py` scores overset against it, per rule and across a threshold
+  (docs/labelling.md, #20).
+- Measured counterparts for the vision rules, off by default until calibrated: OVS008 (cluttered-slide:
+  edge density more than `clutter-spread` = 3 MADs above the deck's median), OVS009 (busy-behind-text:
+  edge density of a text frame's background, words masked out, over `max-background-busyness` = 0.19),
+  OVS111 (weak-title-hierarchy: body text as large as the title) and OVS112 (off-style-slide: a font or
+  title size the rest of the deck doesn't use).
+- New layout rules from shape boxes, off by default until calibrated: OVS005 (misaligned: shapes whose
+  edges line up with no other shape's within `align-tolerance-pt`, 4), OVS006 (unbalanced-layout: Ngo,
+  Teo & Byrne's balance measure under `min-balance`, 0.05) and OVS007 (crowded-slide: less than
+  `min-whitespace`, 25%, of the slide empty). The thresholds are about the starter corpus's 10th
+  percentile; background pictures don't count as content.
+- New colour rules: OVS108 (too-many-colors, more than `max-colors` = 6 distinct stated text and fill
+  colours on a slide), OVS109 (saturated-blue-text) and OVS110 (red-blue-adjacent: red text on blue or
+  touching red and blue shapes). On by default.
+- OVS103 can match the palette perceptually: set `palette-delta-e` (CIEDE2000) to use it instead of
+  `palette-tolerance`'s RGB distance, which keeps its meaning.
+- New rule OVS212 (reading-order): the order a screen reader reads a slide's shapes (their order in the
+  file) compared with the layout's, by rows or down columns, as Kendall's tau; reported under
+  `min-reading-order` (0, worse than random), and when the title isn't read first. On the starter corpus,
+  193 findings in 34 of 63 decks.
 - OVS106 (emphasis-overuse) now counts only paragraphs of more than ten words, and exempts source, note
   and caption lines and italic quotations; on the starter corpus, 619 findings became 108.
 - OVS206 (missing-alt-text) reports once per slide, naming each visual, instead of once per visual
