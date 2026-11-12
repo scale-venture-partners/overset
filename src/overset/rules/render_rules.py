@@ -379,8 +379,10 @@ def long_bullet(ctx):
     "render",
     explanation="Sampled from the rendered pixels, so it holds over images, gradients and theme colours "
     "the file never states as RGB. Thresholds follow WCAG 2.2 SC 1.4.3: 4.5:1 for body text, 3:1 for "
-    "large text (at least 18pt, or 14pt bold). A word's size comes from the run it was set in; a word "
-    "whose size is unknown is held to the body-text threshold. On a projector contrast is lower still.",
+    "large text (at least 18pt, or 14pt bold). A word's size comes from the run it was set in; where the "
+    "file doesn't say (table text, which inherits through the table style), it is measured from the "
+    "render, erring small. Reported once per slide and threshold, listing the blocks. On a projector "
+    "contrast is lower still.",
 )
 def low_contrast(ctx):
     from PIL import Image
@@ -391,6 +393,7 @@ def low_contrast(ctx):
         large = dict(zip(map(id, page.words), _large_text(page.words, shapes, tol), strict=True))
         with Image.open(page.image) as im:
             image = im.convert("RGB")
+            hits: dict[float, list[tuple[float, list]]] = defaultdict(list)
             for block in _by_block(page.words).values():
                 # Large and body text in one block are held to different floors, so sample each on its own.
                 for is_large in (False, True):
@@ -400,12 +403,25 @@ def low_contrast(ctx):
                     floor = ctx.settings.min_contrast_large if is_large else ctx.settings.min_contrast
                     ratio = sample_contrast(image, [w.box for w in words], page.dpi)
                     if ratio is not None and ratio < floor:
-                        message = f"contrast {ratio:.1f}:1, under {floor:g}:1"
-                        out.append(finding(ctx, "OVS104", message, page.number, _text(words)))
+                        hits[floor].append((ratio, words))
+        # A table or diagram can have dozens of low-contrast blocks: one finding per slide and floor.
+        for floor, blocks in sorted(hits.items()):
+            lowest = min(r for r, _ in blocks)
+            if len(blocks) == 1:
+                message = f"contrast {lowest:.1f}:1, under {floor:g}:1"
+                snippet = _text(blocks[0][1])
+            else:
+                message = f"{len(blocks)} text blocks under {floor:g}:1, the lowest {lowest:.1f}:1"
+                snippet = clip(" / ".join(" ".join(w.text for w in ws) for _, ws in blocks), 120)
+            out.append(finding(ctx, "OVS104", message, page.number, snippet))
     return out
 
 
 LARGE_PT, LARGE_BOLD_PT = 18.0, 14.0  # WCAG's "large scale" text
+# A rendered word's box runs ascender to descender, about 1.2x its point size (measured on LibreOffice
+# renders); dividing by a little more errs small, so a word of unknown size is never judged larger than it is.
+BOX_PER_PT = 1.3
+EMU_PER_PT = 12_700
 
 
 def _large_text(words, shapes, tol) -> list[bool]:
@@ -416,5 +432,8 @@ def _large_text(words, shapes, tol) -> list[bool]:
         token = _token(word.text)
         run = next((r for r in owner.runs if token and token in _norm(r.text)), None) if owner else None
         size = run.size_pt if run is not None else None
-        out.append(size is not None and (size >= LARGE_PT - 0.05 or (run.bold and size >= LARGE_BOLD_PT - 0.05)))
+        if size is None:
+            size = word.box.h / EMU_PER_PT / BOX_PER_PT
+        bold = bool(run and run.bold)
+        out.append(size >= LARGE_PT - 0.05 or (bold and size >= LARGE_BOLD_PT - 0.05))
     return out
